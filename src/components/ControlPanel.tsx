@@ -1,108 +1,118 @@
-import { useState } from 'react'
-import './ControlPanel.css'
+import { useState } from "react";
+import "./ControlPanel.css";
 
 interface ControlPanelProps {
-  onCreateTest: (comment: string) => void
-  onStartYouTube: (videoId: string) => void
-  onClearAll: () => void
+  onCreateTest: (comment: string) => void;
+  onStartYouTube: (videoId: string) => void;
+  onClearAll: () => void;
 }
 
-const ControlPanel = ({ onCreateTest, onStartYouTube, onClearAll }: ControlPanelProps) => {
-  const [testComment, setTestComment] = useState('')
-  const [videoId, setVideoId] = useState('')
-  const [aiAuthor, setAiAuthor] = useState('')
-  const [aiMessage, setAiMessage] = useState('')
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiResult, setAiResult] = useState<string | null>(null)
+const ControlPanel = ({
+  onCreateTest,
+  onStartYouTube,
+  onClearAll,
+}: ControlPanelProps) => {
+  const [testComment, setTestComment] = useState("");
+  const [videoId, setVideoId] = useState("");
+  const [aiAuthor, setAiAuthor] = useState("");
+  const [aiMessage, setAiMessage] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState<string | null>(null);
 
   const testComments = [
-    '速くて小さい生物',
-    '大きくて強い赤い生物',
-    '青い翼を持つ賢い生物',
-    '緑の触手を持つ群れで行動する生物',
-    '夜行性の肉食生物',
-  ]
+    "速くて小さい生物",
+    "大きくて強い赤い生物",
+    "青い翼を持つ賢い生物",
+    "緑の触手を持つ群れで行動する生物",
+    "夜行性の肉食生物",
+  ];
 
   const handleQuickTest = (comment: string) => {
-    setTestComment(comment)
-    onCreateTest(comment)
-  }
+    setTestComment(comment);
+    onCreateTest(comment);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     if (testComment.trim()) {
-      onCreateTest(testComment)
-      setTestComment('')
+      onCreateTest(testComment);
+      setTestComment("");
     }
-  }
+  };
 
   const handleYouTubeSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     if (videoId.trim()) {
-      onStartYouTube(videoId)
+      onStartYouTube(videoId);
     }
-  }
+  };
 
   // AI生成をテスト（プレビューのみ）
   const handleAIPreview = async () => {
-    if (!aiMessage.trim()) return
-    
-    setAiLoading(true)
-    setAiResult(null)
-    
+    if (!aiMessage.trim()) return;
+
+    setAiLoading(true);
+    setAiResult(null);
+
     try {
-      const response = await fetch('http://localhost:3001/api/creature/preview-ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          author: aiAuthor || 'テストユーザー',
-          message: aiMessage
-        })
-      })
-      
-      const data = await response.json()
+      const response = await fetch(
+        "http://localhost:3001/api/creature/preview-ai",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            author: aiAuthor || "テストユーザー",
+            message: aiMessage,
+          }),
+        }
+      );
+
+      const data = await response.json();
       if (data.success) {
-        setAiResult(JSON.stringify(data.creature, null, 2))
+        setAiResult(JSON.stringify(data.creature, null, 2));
       } else {
-        setAiResult(`エラー: ${data.error}`)
+        setAiResult(`エラー: ${data.error}`);
       }
     } catch (error) {
-      setAiResult(`エラー: ${(error as Error).message}`)
+      setAiResult(`エラー: ${(error as Error).message}`);
     } finally {
-      setAiLoading(false)
+      setAiLoading(false);
     }
-  }
+  };
 
   // AI生成して追加
   const handleAICreate = async () => {
-    if (!aiMessage.trim()) return
-    
-    setAiLoading(true)
-    setAiResult(null)
-    
+    if (!aiMessage.trim()) return;
+
+    setAiLoading(true);
+    setAiResult(null);
+
     try {
-      const response = await fetch('http://localhost:3001/api/creature/create-ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          author: aiAuthor || 'テストユーザー',
-          message: aiMessage
-        })
-      })
-      
-      const data = await response.json()
+      const response = await fetch(
+        "http://localhost:3001/api/creature/create-ai",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            author: aiAuthor || "テストユーザー",
+            message: aiMessage,
+          }),
+        }
+      );
+
+      const data = await response.json();
       if (data.success) {
-        setAiResult(`✅ 生成成功: ${data.creature.name}`)
-        setAiMessage('')
+        setAiResult(`✅ 生成成功: ${data.creature.name}`);
+        setAiMessage("");
       } else {
-        setAiResult(`エラー: ${data.error}`)
+        setAiResult(`エラー: ${data.error}`);
       }
     } catch (error) {
-      setAiResult(`エラー: ${(error as Error).message}`)
+      setAiResult(`エラー: ${(error as Error).message}`);
     } finally {
-      setAiLoading(false)
+      setAiLoading(false);
     }
-  }
+  };
 
   return (
     <div className="control-panel">
@@ -182,19 +192,19 @@ const ControlPanel = ({ onCreateTest, onStartYouTube, onClearAll }: ControlPanel
           />
         </div>
         <div className="ai-buttons">
-          <button 
-            onClick={handleAIPreview} 
+          <button
+            onClick={handleAIPreview}
             className="btn btn-secondary"
             disabled={aiLoading || !aiMessage.trim()}
           >
-            {aiLoading ? '解析中...' : 'プレビュー'}
+            {aiLoading ? "解析中..." : "プレビュー"}
           </button>
-          <button 
-            onClick={handleAICreate} 
+          <button
+            onClick={handleAICreate}
             className="btn btn-primary"
             disabled={aiLoading || !aiMessage.trim()}
           >
-            {aiLoading ? '生成中...' : 'AI生成して追加'}
+            {aiLoading ? "生成中..." : "AI生成して追加"}
           </button>
         </div>
         {aiResult && (
@@ -207,7 +217,7 @@ const ControlPanel = ({ onCreateTest, onStartYouTube, onClearAll }: ControlPanel
         </p>
       </section>
     </div>
-  )
-}
+  );
+};
 
-export default ControlPanel
+export default ControlPanel;

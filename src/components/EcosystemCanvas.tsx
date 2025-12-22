@@ -110,10 +110,8 @@ const EcosystemCanvas = ({
         );
 
         // 速度を更新（知的移動 + 現在の速度の慣性）- ゆっくり動く
-        let newVelocityX =
-          creature.velocity.x * 0.9 + intelligentForce.x * 0.2;
-        let newVelocityY =
-          creature.velocity.y * 0.9 + intelligentForce.y * 0.2;
+        let newVelocityX = creature.velocity.x * 0.9 + intelligentForce.x * 0.2;
+        let newVelocityY = creature.velocity.y * 0.9 + intelligentForce.y * 0.2;
 
         // 最大速度制限（さらに遅く）
         const maxSpeed = creature.attributes.speed * 0.15;
