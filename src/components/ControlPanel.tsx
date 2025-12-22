@@ -2,43 +2,19 @@ import { useState } from "react";
 import "./ControlPanel.css";
 
 interface ControlPanelProps {
-  onCreateTest: (comment: string) => void;
   onStartYouTube: (videoId: string) => void;
   onClearAll: () => void;
 }
 
 const ControlPanel = ({
-  onCreateTest,
   onStartYouTube,
   onClearAll,
 }: ControlPanelProps) => {
-  const [testComment, setTestComment] = useState("");
   const [videoId, setVideoId] = useState("");
   const [aiAuthor, setAiAuthor] = useState("");
   const [aiMessage, setAiMessage] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState<string | null>(null);
-
-  const testComments = [
-    "速くて小さい生物",
-    "大きくて強い赤い生物",
-    "青い翼を持つ賢い生物",
-    "緑の触手を持つ群れで行動する生物",
-    "夜行性の肉食生物",
-  ];
-
-  const handleQuickTest = (comment: string) => {
-    setTestComment(comment);
-    onCreateTest(comment);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (testComment.trim()) {
-      onCreateTest(testComment);
-      setTestComment("");
-    }
-  };
 
   const handleYouTubeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,35 +92,6 @@ const ControlPanel = ({
 
   return (
     <div className="control-panel">
-      <section className="control-section">
-        <h3>外来種の侵入</h3>
-        <form onSubmit={handleSubmit}>
-          <input
-            type="text"
-            value={testComment}
-            onChange={(e) => setTestComment(e.target.value)}
-            placeholder="生物の特徴を入力..."
-            className="text-input"
-          />
-          <button type="submit" className="btn btn-primary">
-            外来種を投入 (2匹)
-          </button>
-        </form>
-
-        <div className="quick-tests">
-          <p className="section-label">クイックテスト:</p>
-          {testComments.map((comment, index) => (
-            <button
-              key={index}
-              onClick={() => handleQuickTest(comment)}
-              className="btn btn-small"
-            >
-              {comment}
-            </button>
-          ))}
-        </div>
-      </section>
-
       <section className="control-section">
         <h3>YouTube配信</h3>
         <form onSubmit={handleYouTubeSubmit}>

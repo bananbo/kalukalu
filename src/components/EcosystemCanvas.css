@@ -261,3 +261,33 @@
   font-size: 0.75rem;
   color: #cbd5e1;
 }
+
+/* コンパクトステータスバー */
+.compact-status {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 0.4rem 0.8rem;
+  display: flex;
+  gap: 1rem;
+  font-size: 0.85rem;
+  color: #e2e8f0;
+}
+
+.compact-status span {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.red-count {
+  color: #f87171;
+}
+
+.green-count {
+  color: #4ade80;
+}

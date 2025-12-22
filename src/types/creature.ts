@@ -5,10 +5,14 @@ export interface BehaviorProgram {
   aggressiveness: number; // 攻撃性 (0.0 ~ 1.0)
   curiosity: number; // 好奇心（ランダム移動の度合い） (0.0 ~ 1.0)
   territoriality: number; // 縄張り意識（一箇所に留まる） (0.0 ~ 1.0)
+  obstacleAwareness: number; // 障害物認識度 (0.0 ~ 1.0) - 高いと早めに回避
+  obstacleStrategy: "avoid" | "use-as-cover" | "ignore"; // 障害物への戦略
+  stealthAttack: number; // 背後攻撃傾向 (0.0 ~ 1.0) - 高いとレッドの背後を狙う
+  counterAttack: number; // 反撃傾向 (0.0 ~ 1.0) - 高いと逃げずに反撃を試みる
 }
 
-// 食物連鎖の階層
-export type FoodChainTier = "producer" | "herbivore" | "predator" | "apex";
+// 種族タイプ（鬼ごっこシステム）
+export type SpeciesType = "red" | "green";
 
 // 植物（食料）
 export interface Plant {
@@ -20,68 +24,90 @@ export interface Plant {
   isConsumed: boolean; // 食べられたか
 }
 
-// 食物連鎖の関係を判定するヘルパー
-export function getFoodChainTier(speciesName: string): FoodChainTier {
+// 壁・障害物
+export interface Obstacle {
+  id: string;
+  position: { x: number; y: number };
+  width: number;
+  height: number;
+  type: "wall" | "rock" | "tree"; // 後でイラストに置き換え可能
+}
+
+// 種族タイプを判定するヘルパー
+export function getSpeciesType(speciesName: string): SpeciesType {
   const name = speciesName.toLowerCase();
   if (
     name.includes("グリーン") ||
     name.includes("green") ||
     name.includes("緑")
   ) {
-    return "herbivore"; // 草食 - 植物を食べる
-  }
-  if (
-    name.includes("ブルー") ||
-    name.includes("blue") ||
-    name.includes("青") ||
-    name.includes("ネイティブ")
-  ) {
-    return "predator"; // 中間捕食者 - グリーンを食べる
+    return "green"; // グリーン族（逃げる側、植物を食べる）
   }
   if (name.includes("レッド") || name.includes("red") || name.includes("赤")) {
-    return "apex"; // 頂点捕食者 - ブルーを食べる、同族も食べる
+    return "red"; // レッド族（鬼）
   }
-  // デフォルトは雑食として中間捕食者扱い
-  return "predator";
+  // デフォルトはグリーン
+  return "green";
 }
 
-// 捕食関係を判定（predatorがpreyを食べられるか）
-export function canEat(predator: Creature, prey: Creature): boolean {
-  const predatorTier = getFoodChainTier(predator.species);
-  const preyTier = getFoodChainTier(prey.species);
+// 後方互換性のため（削除予定）
+export type FoodChainTier = "producer" | "herbivore" | "predator" | "apex";
+export function getFoodChainTier(speciesName: string): FoodChainTier {
+  const type = getSpeciesType(speciesName);
+  return type === "green" ? "herbivore" : "apex";
+}
 
-  // 同じ種族は食べない（レッド系除く）
-  if (predator.species === prey.species) {
-    return predatorTier === "apex"; // レッド系は共食いする
-  }
+// 鬼ごっこシステム: レッドがグリーンを捕まえられるか
+export function canCatch(red: Creature, green: Creature): boolean {
+  const redType = getSpeciesType(red.species);
+  const greenType = getSpeciesType(green.species);
 
-  // 草食は他の生物を食べない
-  if (predatorTier === "herbivore") {
+  // レッドはグリーンを捕まえられる
+  return redType === "red" && greenType === "green";
+}
+
+// 背後からの攻撃判定（グリーンがレッドを背後から攻撃できるか）
+export function canAttackFromBehind(green: Creature, red: Creature): boolean {
+  const greenType = getSpeciesType(green.species);
+  const redType = getSpeciesType(red.species);
+
+  // グリーンがレッドでない場合は攻撃不可
+  if (greenType !== "green" || redType !== "red") {
     return false;
   }
 
-  // 中間捕食者（ブルー系）は草食（グリーン系）を食べる
-  if (predatorTier === "predator" && preyTier === "herbivore") {
-    return true;
-  }
+  // レッドの移動方向（向いている方向）
+  const redFacingAngle = red.wanderAngle;
 
-  // 頂点捕食者（レッド系）は中間捕食者（ブルー系）を食べる
-  if (predatorTier === "apex" && preyTier === "predator") {
-    return true;
-  }
+  // レッドから見たグリーンへの角度
+  const dx = green.position.x - red.position.x;
+  const dy = green.position.y - red.position.y;
+  const angleFromRedToGreen = Math.atan2(dy, dx);
 
-  // 頂点捕食者は同じ頂点捕食者（他のレッド系）も食べる
-  if (predatorTier === "apex" && preyTier === "apex") {
-    return true;
-  }
+  // レッドの正面方向との角度差を計算
+  let angleDiff = angleFromRedToGreen - redFacingAngle;
+  while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+  while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
 
-  return false;
+  // グリーンがレッドの「背後」にいるか判定
+  // 背後 = レッドの正面から見て135度～225度の範囲（真後ろ±45度）
+  // つまり、angleDiffの絶対値が135度以上なら背後
+  const BACK_ANGLE_THRESHOLD = Math.PI * 0.75; // 135度
+  return Math.abs(angleDiff) >= BACK_ANGLE_THRESHOLD;
+}
+
+// 後方互換性のため（段階的に削除）
+export function canEat(predator: Creature, prey: Creature): boolean {
+  return canCatch(predator, prey);
 }
 
 // 逃げるべき相手か判定
 export function shouldFleeFrom(creature: Creature, other: Creature): boolean {
-  // 相手が自分を食べられるなら逃げるべき
-  return canEat(other, creature);
+  const creatureType = getSpeciesType(creature.species);
+  const otherType = getSpeciesType(other.species);
+
+  // グリーンはレッドから逃げる
+  return creatureType === "green" && otherType === "red";
 }
 
 // 視野内に対象がいるか判定
@@ -153,6 +179,7 @@ export function getDefaultVision(speciesName: string): {
 export interface Creature {
   id: string;
   name: string;
+  typeId: string; // キャラクタータイプID（分裂しても継承される）
   attributes: {
     speed: number;
     size: number;
@@ -196,7 +223,7 @@ export interface Creature {
   age: number;
   author: string;
   comment: string;
-  species: string;
+  species: string; // 'レッド族' または 'グリーン族'
   isNewArrival?: boolean;
   reproductionCooldown: number;
   reproductionHistory: { [partnerId: string]: number }; // 相手ごとの繁殖回数
@@ -205,4 +232,6 @@ export interface Creature {
     angle: number; // 視野角（ラジアン、0～2π）
     range: number; // 視野距離
   };
+  plantPoints: number; // 植物ポイント（グリーンのみ）
+  splitCooldown: number; // 分裂クールダウン
 }

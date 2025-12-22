@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Creature, Plant, getFoodChainTier } from "../types/creature";
+import { Creature, Plant, Obstacle, getFoodChainTier } from "../types/creature";
 import CreatureSVG from "./CreatureSVG";
 import {
   checkCollision,
@@ -11,8 +11,10 @@ import {
   eatPlant,
   createInitialPlants,
   updatePlants,
-  canSelfReproduce,
-  selfReproduce,
+  canSplit,
+  split,
+  createRandomObstacles,
+  checkObstacleCollision,
 } from "../utils/ecosystemSimulation";
 import { calculateIntelligentMovement } from "../utils/intelligentMovement";
 import "./EcosystemCanvas.css";
@@ -25,6 +27,8 @@ interface EcosystemCanvasProps {
 const INITIAL_PLANT_COUNT = 30;
 const MAX_PLANTS = 50;
 const HUNGER_RATE = 0.015; // 空腹によるエネルギー減少率（ゆっくり）
+const RED_HUNGER_RATE = 0.018; // レッド族の追加減少率（寿命20%短縮）
+const REPLENISH_COOLDOWN = 300; // 補充のクールダウン（フレーム数、約5秒）
 
 const EcosystemCanvas = ({
   creatures,
@@ -33,41 +37,149 @@ const EcosystemCanvas = ({
   const canvasRef = useRef<HTMLDivElement>(null);
   const animationFrameRef = useRef<number>();
   const [plants, setPlants] = useState<Plant[]>([]);
+  const [obstacles, setObstacles] = useState<Obstacle[]>([]);
   const [newArrival, setNewArrival] = useState<Creature | null>(null);
   const [victoryInfo, setVictoryInfo] = useState<{
     hasWinner: boolean;
     winner: string | null;
   }>({ hasWinner: false, winner: null });
   const plantsRef = useRef<Plant[]>([]);
+  const obstaclesRef = useRef<Obstacle[]>([]);
   const creaturesRef = useRef<Creature[]>(creatures);
   const onCreatureUpdateRef = useRef(onCreatureUpdate);
+  const replenishCooldownRef = useRef<{ red: number; green: number }>({
+    red: 0,
+    green: 0,
+  });
 
-  // refを最新に保つ
+  // refを最新に保つ（外部からの追加も反映）
   useEffect(() => {
-    creaturesRef.current = creatures;
+    // 現在のrefのIDセット
+    const currentIds = new Set(creaturesRef.current.map((c) => c.id));
+    // 外部から渡されたcreaturesのIDセット
+    const externalIds = new Set(creatures.map((c) => c.id));
+
+    // 新しい生物（refにないが外部から渡された）
+    const newCreatures = creatures.filter((c) => !currentIds.has(c.id));
+
+    // 削除された生物（refにあるが外部から渡されない）を除外したリスト
+    const survivingCreatures = creaturesRef.current.filter((c) =>
+      externalIds.has(c.id)
+    );
+
+    if (newCreatures.length > 0) {
+      // 新しい生物を追加
+      creaturesRef.current = [...survivingCreatures, ...newCreatures];
+      console.log(
+        `Added ${newCreatures.length} new creatures from external source`
+      );
+    } else if (survivingCreatures.length !== creaturesRef.current.length) {
+      // 削除のみ
+      creaturesRef.current = survivingCreatures;
+    }
+    // それ以外の場合（位置更新など内部変更）はrefを保持
   }, [creatures]);
 
   useEffect(() => {
     onCreatureUpdateRef.current = onCreatureUpdate;
   }, [onCreatureUpdate]);
 
-  // 植物の初期化
+  // 植物と障害物の初期化
   useEffect(() => {
-    if (canvasRef.current && plants.length === 0) {
-      const initialPlants = createInitialPlants(
-        INITIAL_PLANT_COUNT,
-        canvasRef.current.clientWidth,
-        canvasRef.current.clientHeight
-      );
-      setPlants(initialPlants);
-      plantsRef.current = initialPlants;
+    if (canvasRef.current) {
+      const width = canvasRef.current.clientWidth;
+      const height = canvasRef.current.clientHeight;
+      if (width > 0 && height > 0) {
+        // 植物の初期化
+        if (plantsRef.current.length === 0) {
+          const initialPlants = createInitialPlants(
+            INITIAL_PLANT_COUNT,
+            width,
+            height
+          );
+          setPlants(initialPlants);
+          plantsRef.current = initialPlants;
+          console.log(`Initialized ${initialPlants.length} plants`);
+        }
+        // 障害物の初期化
+        if (obstaclesRef.current.length === 0) {
+          const initialObstacles = createRandomObstacles(
+            5 + Math.floor(Math.random() * 4),
+            width,
+            height
+          );
+          setObstacles(initialObstacles);
+          obstaclesRef.current = initialObstacles;
+          console.log(
+            `Initialized ${initialObstacles.length} obstacles (sync)`
+          );
+        }
+      }
     }
-  }, [canvasRef.current]);
+  }, []);
 
-  // 新着生物の検出
+  // canvasがマウントされた後に植物と障害物を初期化（遅延）
   useEffect(() => {
-    const newCreature = creatures.find((c) => c.isNewArrival);
-    if (newCreature) {
+    const checkAndInitPlants = () => {
+      if (canvasRef.current) {
+        const width = canvasRef.current.clientWidth;
+        const height = canvasRef.current.clientHeight;
+        if (width > 0 && height > 0) {
+          // 植物の初期化（まだない場合）
+          if (plantsRef.current.length === 0) {
+            const initialPlants = createInitialPlants(
+              INITIAL_PLANT_COUNT,
+              width,
+              height
+            );
+            setPlants(initialPlants);
+            plantsRef.current = initialPlants;
+            console.log(`Initialized ${initialPlants.length} plants (delayed)`);
+          }
+
+          // 障害物を初期化（まだない場合）
+          if (obstaclesRef.current.length === 0) {
+            const initialObstacles = createRandomObstacles(
+              5 + Math.floor(Math.random() * 4),
+              width,
+              height
+            );
+            setObstacles(initialObstacles);
+            obstaclesRef.current = initialObstacles;
+            console.log(`Initialized ${initialObstacles.length} obstacles`);
+          }
+        }
+      }
+    };
+    // 少し遅延させて確実にcanvasが描画された後に実行
+    const timer = setTimeout(checkAndInitPlants, 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // 新着生物の検出（ユーザー生成のみ、システム補充は除外）
+  const lastCreatureIdsRef = useRef<Set<string> | null>(null);
+
+  useEffect(() => {
+    // 初回は既存のクリーチャーIDで初期化（新着アラートを出さない）
+    if (lastCreatureIdsRef.current === null) {
+      lastCreatureIdsRef.current = new Set(creatures.map((c) => c.id));
+      return;
+    }
+
+    const currentIds = new Set(creatures.map((c) => c.id));
+
+    // 新しく追加された生物を検出
+    const newCreatures = creatures.filter(
+      (c) =>
+        !lastCreatureIdsRef.current!.has(c.id) &&
+        c.isNewArrival &&
+        c.author !== "システム" &&
+        c.author !== "system" &&
+        c.author !== "System"
+    );
+
+    if (newCreatures.length > 0) {
+      const newCreature = newCreatures[0];
       setNewArrival(newCreature);
       setTimeout(() => {
         setNewArrival(null);
@@ -78,15 +190,40 @@ const EcosystemCanvas = ({
         );
       }, 3000);
     }
-  }, [creatures.length]);
+
+    lastCreatureIdsRef.current = currentIds;
+  }, [creatures]);
 
   // シミュレーションループ
   useEffect(() => {
+    let isRunning = true;
+    let frameCount = 0;
+
     const simulate = () => {
-      if (!canvasRef.current) return;
+      if (!isRunning) return;
+
+      if (!canvasRef.current) {
+        // canvasがまだ準備できていない場合は次フレームで再試行
+        animationFrameRef.current = requestAnimationFrame(simulate);
+        return;
+      }
 
       const canvasWidth = canvasRef.current.clientWidth;
       const canvasHeight = canvasRef.current.clientHeight;
+
+      // キャンバスサイズが0の場合も再試行
+      if (canvasWidth === 0 || canvasHeight === 0) {
+        animationFrameRef.current = requestAnimationFrame(simulate);
+        return;
+      }
+
+      // デバッグ: 最初の数フレームだけログ出力
+      frameCount++;
+      if (frameCount <= 5 || frameCount % 300 === 0) {
+        console.log(
+          `Frame ${frameCount}: creatures=${creaturesRef.current.length}, plants=${plantsRef.current.length}`
+        );
+      }
 
       // refから最新の値を取得
       const currentCreatures = creaturesRef.current;
@@ -106,7 +243,8 @@ const EcosystemCanvas = ({
           currentCreatures,
           currentPlants,
           canvasWidth,
-          canvasHeight
+          canvasHeight,
+          obstaclesRef.current
         );
 
         // 速度を更新（知的移動 + 現在の速度の慣性）- ゆっくり動く
@@ -143,8 +281,10 @@ const EcosystemCanvas = ({
         const tier = getFoodChainTier(creature.species);
         let hungerPenalty = 0;
 
-        // 草食以外は食べないとエネルギーが減る
-        if (tier !== "herbivore") {
+        // レッド族は体力が自動で減らない（倒されるまで生き続ける）
+        // グリーン族は植物を食べないと体力が減る仕組みなし（分裂ベース）
+        // 中間捕食者のみ空腹処理
+        if (tier === "predator") {
           hungerPenalty = HUNGER_RATE;
         }
 
@@ -156,6 +296,9 @@ const EcosystemCanvas = ({
           0,
           creature.reproductionCooldown - 1
         );
+
+        // 分裂クールダウン
+        const newSplitCooldown = Math.max(0, creature.splitCooldown - 1);
 
         // 移動方向角度を更新（速度から計算、急激な変化を防ぐ）
         const speed = Math.sqrt(newVelocityX ** 2 + newVelocityY ** 2);
@@ -177,6 +320,7 @@ const EcosystemCanvas = ({
           energy: Math.max(0, creature.energy - hungerPenalty),
           age: newAge,
           reproductionCooldown: newReproductionCooldown,
+          splitCooldown: newSplitCooldown,
           wanderAngle: newWanderAngle,
         };
       });
@@ -192,13 +336,15 @@ const EcosystemCanvas = ({
             const result = eatPlant(creature, plant);
 
             if (result.canEat) {
-              // 植物を食べた
+              // 植物を食べた（エネルギーと植物ポイントを獲得）
               updatedCreatures[i] = {
                 ...updatedCreatures[i],
                 energy: Math.min(
                   100,
                   updatedCreatures[i].energy + result.energyGain
                 ),
+                plantPoints:
+                  updatedCreatures[i].plantPoints + result.plantPointsGain,
               };
               currentPlants[j] = {
                 ...plant,
@@ -208,6 +354,38 @@ const EcosystemCanvas = ({
             }
           }
         }
+      }
+
+      // 障害物との衝突判定
+      for (let i = 0; i < updatedCreatures.length; i++) {
+        let creature = updatedCreatures[i];
+
+        for (const obstacle of obstaclesRef.current) {
+          const collision = checkObstacleCollision(creature, obstacle);
+          if (collision.collides) {
+            // 押し戻す
+            creature = {
+              ...creature,
+              position: {
+                x: creature.position.x + collision.pushX,
+                y: creature.position.y + collision.pushY,
+              },
+              velocity: {
+                // 衝突した方向の速度を反転
+                x:
+                  collision.pushX !== 0
+                    ? -creature.velocity.x * 0.5
+                    : creature.velocity.x,
+                y:
+                  collision.pushY !== 0
+                    ? -creature.velocity.y * 0.5
+                    : creature.velocity.y,
+              },
+            };
+          }
+        }
+
+        updatedCreatures[i] = creature;
       }
 
       // 衝突判定と戦闘・繁殖・捕食
@@ -290,24 +468,82 @@ const EcosystemCanvas = ({
       // エネルギーが0の生物を除去
       updatedCreatures = updatedCreatures.filter((c) => c.energy > 0);
 
-      // グリーン系の単独繁殖（分裂）チェック
+      // グリーンの分裂チェック（植物ポイントベース）
       for (let i = 0; i < updatedCreatures.length; i++) {
         const creature = updatedCreatures[i];
-        if (canSelfReproduce(creature)) {
-          const offspring = selfReproduce(creature, canvasWidth, canvasHeight);
-          newBabies.push(offspring);
+        if (canSplit(creature)) {
+          const result = split(creature, canvasWidth, canvasHeight);
+          newBabies.push(result.clone);
 
-          // 親のエネルギーとクールダウンを更新
-          updatedCreatures[i] = {
-            ...creature,
-            energy: creature.energy - 25,
-            reproductionCooldown: 500,
-          };
+          // 親を更新（ポイント消費、エネルギー消費、クールダウン）
+          updatedCreatures[i] = result.updatedParent;
         }
       }
 
       // 新しく生まれた生物を追加
       updatedCreatures = [...updatedCreatures, ...newBabies];
+
+      // クールダウンを減らす
+      if (replenishCooldownRef.current.red > 0) {
+        replenishCooldownRef.current.red--;
+      }
+      if (replenishCooldownRef.current.green > 0) {
+        replenishCooldownRef.current.green--;
+      }
+
+      // 自動補充システム（一定数を下回ったら追加）
+      const MIN_RED_COUNT = 2;
+      const MIN_GREEN_COUNT = 3;
+
+      const redCount = updatedCreatures.filter(
+        (c) => c.species.includes("レッド") || c.species.includes("red")
+      ).length;
+      const greenCount = updatedCreatures.filter(
+        (c) => c.species.includes("グリーン") || c.species.includes("green")
+      ).length;
+
+      // レッド族の自動補充（クールダウン付き）
+      if (redCount < MIN_RED_COUNT && replenishCooldownRef.current.red === 0) {
+        const needed = MIN_RED_COUNT - redCount;
+        console.log(`Replenishing ${needed} Red creatures...`);
+        replenishCooldownRef.current.red = REPLENISH_COOLDOWN;
+        fetch("http://localhost:3001/api/creature/generate-red", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ count: needed }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success) {
+              console.log(`Successfully replenished Red:`, data.creatures);
+            }
+          })
+          .catch((err) => console.error("Failed to auto-replenish Red:", err));
+      }
+
+      // グリーン族の自動補充（クールダウン付き）
+      if (
+        greenCount < MIN_GREEN_COUNT &&
+        replenishCooldownRef.current.green === 0
+      ) {
+        const needed = MIN_GREEN_COUNT - greenCount;
+        console.log(`Replenishing ${needed} Green creatures...`);
+        replenishCooldownRef.current.green = REPLENISH_COOLDOWN;
+        fetch("http://localhost:3001/api/creature/generate-green", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ count: needed }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success) {
+              console.log(`Successfully replenished Green:`, data.creatures);
+            }
+          })
+          .catch((err) =>
+            console.error("Failed to auto-replenish Green:", err)
+          );
+      }
 
       // 植物を更新
       plantsRef.current = currentPlants;
@@ -317,13 +553,19 @@ const EcosystemCanvas = ({
       const victory = checkVictory(updatedCreatures);
       setVictoryInfo(victory);
 
+      // 重要: 更新されたcreaturesをrefに保存（次のフレームで使用）
+      creaturesRef.current = updatedCreatures;
+
       onCreatureUpdateRef.current(updatedCreatures);
       animationFrameRef.current = requestAnimationFrame(simulate);
     };
 
+    // シミュレーション開始
+    console.log("Starting simulation loop...");
     animationFrameRef.current = requestAnimationFrame(simulate);
 
     return () => {
+      isRunning = false;
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
@@ -387,54 +629,69 @@ const EcosystemCanvas = ({
             </g>
           ))}
 
+        {/* 障害物を描画 */}
+        {obstacles.map((obstacle) => (
+          <g key={obstacle.id}>
+            <rect
+              x={obstacle.position.x}
+              y={obstacle.position.y}
+              width={obstacle.width}
+              height={obstacle.height}
+              fill={
+                obstacle.type === "wall"
+                  ? "#6b7280"
+                  : obstacle.type === "rock"
+                  ? "#78716c"
+                  : "#3f6212"
+              }
+              stroke={
+                obstacle.type === "wall"
+                  ? "#4b5563"
+                  : obstacle.type === "rock"
+                  ? "#57534e"
+                  : "#365314"
+              }
+              strokeWidth={2}
+              rx={
+                obstacle.type === "rock" ? 8 : obstacle.type === "tree" ? 4 : 2
+              }
+              opacity={0.9}
+            />
+            {/* 障害物のハイライト */}
+            <rect
+              x={obstacle.position.x + 3}
+              y={obstacle.position.y + 3}
+              width={obstacle.width - 6}
+              height={obstacle.height * 0.3}
+              fill="rgba(255,255,255,0.15)"
+              rx={obstacle.type === "rock" ? 6 : 2}
+            />
+          </g>
+        ))}
+
         {/* 生物を描画 */}
         {creatures.map((creature) => (
           <CreatureSVG key={creature.id} creature={creature} />
         ))}
       </svg>
 
-      {/* オーバーレイ情報 */}
+      {/* オーバーレイ情報（シンプルにまとめ） */}
       <div className="canvas-overlay">
-        <div className="stats-panel">
-          <div className="stat-item">
-            <span className="stat-label">生物数:</span>
-            <span className="stat-value">{creatures.length}</span>
-          </div>
-          <div className="stat-item">
-            <span className="stat-label">種族数:</span>
-            <span className="stat-value">
-              {Object.keys(speciesCount).length}
-            </span>
-          </div>
-          <div className="stat-item">
-            <span className="stat-label">🌿 植物:</span>
-            <span className="stat-value">{activePlantCount}</span>
-          </div>
-        </div>
-
-        {/* 種族別カウント */}
-        <div className="species-panel">
+        {/* コンパクトなステータスバー */}
+        <div className="compact-status">
+          <span>🐾 {creatures.length}</span>
+          <span>🌱 {activePlantCount}</span>
           {Object.entries(speciesCount).map(([species, count]) => {
-            const tier = getFoodChainTier(species);
-            const tierIcon =
-              tier === "herbivore" ? "🌿" : tier === "predator" ? "🔵" : "🔴";
+            const isRed = species.includes("レッド") || species.includes("red");
             return (
-              <div key={species} className="species-item">
-                <span className="species-name">
-                  {tierIcon} {species}
-                </span>
-                <span className="species-count">{count}</span>
-              </div>
+              <span
+                key={species}
+                className={isRed ? "red-count" : "green-count"}
+              >
+                {isRed ? "🔴" : "🟢"} {count}
+              </span>
             );
           })}
-        </div>
-
-        {/* 食物連鎖の説明 */}
-        <div className="food-chain-legend">
-          <div className="legend-title">食物連鎖</div>
-          <div className="legend-item">
-            🔴 レッド → 🔵 ブルー → 🌿 グリーン → 🌱 植物
-          </div>
         </div>
 
         {/* 外来種登場アラート */}

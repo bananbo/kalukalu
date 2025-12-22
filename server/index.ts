@@ -94,6 +94,7 @@ app.get("/api/initial-species", async (req, res) => {
   try {
     const creatures = [];
 
+    // グリーン族を生成
     for (const species of initialSpeciesData) {
       for (const comment of species.comments) {
         const creature = await creatureGenerator.generateFromComment({
@@ -107,34 +108,33 @@ app.get("/api/initial-species", async (req, res) => {
       }
     }
 
+    // レッド族（鬼）を自動生成（初期3体）
+    const INITIAL_RED_COUNT = 3;
+    for (let i = 0; i < INITIAL_RED_COUNT; i++) {
+      const redCreature = creatureGenerator.generateRedCreature(i);
+      creatures.push(redCreature);
+    }
+
     res.json({ success: true, creatures });
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });
   }
 });
 
-// 手動で生物を作成（テスト用） - 2匹セットで追加
+// 手動で生物を作成（テスト用） - 1匹ずつ追加
 app.post("/api/creature/create", async (req, res) => {
   try {
     const { comment } = req.body;
 
-    // 2匹作成（兄弟として）
-    const creature1 = await creatureGenerator.generateFromComment(comment);
-    const creature2 = await creatureGenerator.generateFromComment({
-      ...comment,
-      message: comment.message + " (兄弟)",
-    });
-
-    // 2匹目は少し離れた位置に配置
-    creature2.position.x += 50;
-    creature2.position.y += 30;
+    // 1匹作成
+    const creature = await creatureGenerator.generateFromComment(comment);
 
     broadcast({
-      type: "newCreatures",
-      creatures: [creature1, creature2],
+      type: "newCreature",
+      creature: creature,
     });
 
-    res.json({ success: true, creatures: [creature1, creature2] });
+    res.json({ success: true, creature: creature });
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });
   }
@@ -169,6 +169,54 @@ app.post("/api/creature/create-ai", async (req, res) => {
     res.json({ success: true, creature });
   } catch (error) {
     console.error("AI creature generation error:", error);
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+// レッド族を生成（自動補充用）
+app.post("/api/creature/generate-red", async (req, res) => {
+  try {
+    const { count = 1 } = req.body;
+    const creatures = [];
+
+    for (let i = 0; i < count; i++) {
+      const redCreature = creatureGenerator.generateRedCreature(Date.now() + i);
+      creatures.push(redCreature);
+
+      broadcast({
+        type: "newCreature",
+        creature: redCreature,
+      });
+    }
+
+    res.json({ success: true, creatures });
+  } catch (error) {
+    console.error("Red creature generation error:", error);
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+// グリーン族を生成（自動補充用）
+app.post("/api/creature/generate-green", async (req, res) => {
+  try {
+    const { count = 1 } = req.body;
+    const creatures = [];
+
+    for (let i = 0; i < count; i++) {
+      const greenCreature = creatureGenerator.generateGreenCreature(
+        Date.now() + i
+      );
+      creatures.push(greenCreature);
+
+      broadcast({
+        type: "newCreature",
+        creature: greenCreature,
+      });
+    }
+
+    res.json({ success: true, creatures });
+  } catch (error) {
+    console.error("Green creature generation error:", error);
     res.status(500).json({ success: false, error: (error as Error).message });
   }
 });

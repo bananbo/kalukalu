@@ -7,6 +7,10 @@ interface BehaviorProgram {
   aggressiveness: number;
   curiosity: number;
   territoriality: number;
+  obstacleAwareness: number;
+  obstacleStrategy: "avoid" | "use-as-cover" | "ignore";
+  stealthAttack: number; // 背後攻撃傾向
+  counterAttack: number; // 反撃傾向
 }
 
 // AIが返すJSON形式の定義
@@ -47,6 +51,7 @@ interface AIGeneratedCreatureParams {
 interface Creature {
   id: string;
   name: string;
+  typeId: string; // キャラクタータイプID（分裂しても継承される）
   attributes: {
     speed: number; // 0-10
     size: number; // 0-10
@@ -90,7 +95,7 @@ interface Creature {
   age: number;
   author: string;
   comment: string;
-  species: string;
+  species: string; // 'レッド族' または 'グリーン族'
   isNewArrival?: boolean;
   reproductionCooldown: number;
   reproductionHistory: { [partnerId: string]: number };
@@ -99,6 +104,8 @@ interface Creature {
     angle: number; // 視野角（ラジアン）
     range: number; // 視野距離
   };
+  plantPoints: number; // 植物ポイント（グリーンのみ）
+  splitCooldown: number; // 分裂クールダウン
 }
 
 export class CreatureGenerator {
@@ -157,7 +164,7 @@ export class CreatureGenerator {
     const prompt = this.buildPrompt(comment);
 
     const model = this.genAI!.getGenerativeModel({
-      model: "gemini-3-flash-preview", // 無料枠が大きいモデル
+      model: "gemini-2.0-flash-exp", // Gemini 2.0 Flash
       generationConfig: {
         temperature: 0.8,
         responseMimeType: "application/json",
@@ -219,7 +226,11 @@ export class CreatureGenerator {
     "fleeWhenWeak": 0.0〜1.0（弱い時の逃走傾向）,
     "aggressiveness": 0.0〜1.0（攻撃性）,
     "curiosity": 0.0〜1.0（好奇心・探索傾向）,
-    "territoriality": 0.0〜1.0（縄張り意識）
+    "territoriality": 0.0〜1.0（縄張り意識）,
+    "obstacleAwareness": 0.0〜1.0（障害物認識度、高いと早めに回避）,
+    "obstacleStrategy": "avoid" | "use-as-cover" | "ignore"（障害物戦略）,
+    "stealthAttack": 0.0〜1.0（背後攻撃傾向、高いとレッド族の背後を狙う）,
+    "counterAttack": 0.0〜1.0（反撃傾向、高いと逃げずに反撃を試みる）
   },
   "vision": {
     "angle": 視野角（ラジアン、0.5〜6.28、捕食者は狭く、草食は広く）,
@@ -227,9 +238,22 @@ export class CreatureGenerator {
   }
 }
 
-投稿者名に「グリーン」「緑」が含まれる場合は草食系（小さめ、臆病）、
-「ブルー」「青」が含まれる場合は中間捕食者、
-「レッド」「赤」が含まれる場合は頂点捕食者（大きめ、攻撃的）として設定してください。
+【ゲームシステム】
+- マップには壁や岩などの障害物があります
+- レッド族（鬼）は倒されるまで永遠に生き続けます（裏ボス）
+- グリーン族は背後からレッドを攻撃すると倒せるチャンスがあります！
+
+【背後攻撃について】
+- stealthAttack: 高い＝狡猾・戦略的、レッドの背後を狙って行動
+- counterAttack: 高い＝勇敢・戦闘的、逃げずに反撃を試みる
+- コメントに「攻撃」「戦う」「倒す」「勇敢」「狡猾」などがあれば高く設定
+
+【障害物戦略】
+- obstacleAwareness: 高い＝賢い・慎重、低い＝突進型・無謀
+- obstacleStrategy:
+  - "avoid": 障害物を避けて移動（一般的）
+  - "use-as-cover": 障害物を隠れ場所として活用（臆病な草食動物向け）
+  - "ignore": 障害物を気にしない（突進型の捕食者向け）
 
 コメント内容から生物の性格や特徴を推測し、面白いキャラクターを生成してください。
 `;
@@ -239,6 +263,9 @@ export class CreatureGenerator {
     aiParams: AIGeneratedCreatureParams,
     comment: { author: string; message: string; timestamp: Date }
   ): Creature {
+    // ユーザーが作成するのは常にグリーン族
+    const species = "グリーン族";
+
     const position = {
       x: Math.random() * 800,
       y: Math.random() * 600,
@@ -249,9 +276,17 @@ export class CreatureGenerator {
       y: (Math.random() - 0.5) * aiParams.attributes.speed * 0.5,
     };
 
+    // ランダムなtypeIDを生成（8文字の英数字）
+    const typeId = `type-${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .substr(2, 5)}`;
+
     return {
-      id: `creature-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `creature-${Date.now()}-${Math.random()
+        .toString(36)
+        .substr(2, 9)}-${performance.now()}`,
       name: aiParams.name,
+      typeId: typeId, // キャラクタータイプID
       attributes: aiParams.attributes,
       appearance: aiParams.appearance,
       behavior: aiParams.behavior,
@@ -264,12 +299,14 @@ export class CreatureGenerator {
       age: 0,
       author: comment.author,
       comment: comment.message,
-      species: comment.author,
+      species: species, // ユーザーが作成するのは常にグリーン族
       isNewArrival: true,
       reproductionCooldown: 0,
       reproductionHistory: {},
       wanderAngle: Math.random() * Math.PI * 2,
       vision: aiParams.vision,
+      plantPoints: 0, // 植物ポイント初期値
+      splitCooldown: 0, // 分裂クールダウン初期値
     };
   }
 
@@ -280,7 +317,9 @@ export class CreatureGenerator {
   }): Creature {
     // コメントから簡易的にパラメータを抽出（デバッグ用）
     const message = comment.message.toLowerCase();
-    const authorLower = comment.author.toLowerCase();
+
+    // ユーザーが作成するのは常にグリーン族
+    const species = "グリーン族";
 
     // キーワードベースの簡易解析
     const keywords = {
@@ -299,32 +338,8 @@ export class CreatureGenerator {
       social: this.calculateAttribute(message, keywords.social),
     };
 
-    // 食物連鎖に基づくサイズ調整（グリーン < ブルー < レッド）
-    if (
-      authorLower.includes("グリーン") ||
-      authorLower.includes("green") ||
-      authorLower.includes("緑")
-    ) {
-      // グリーン系は小さめ（サイズ 1-3）、速度は遅め
-      attributes.size = Math.min(3, Math.max(1, attributes.size - 3));
-      attributes.speed = Math.max(2, Math.min(5, attributes.speed - 2)); // 遅め（2-5）
-    } else if (
-      authorLower.includes("ブルー") ||
-      authorLower.includes("blue") ||
-      authorLower.includes("青") ||
-      authorLower.includes("ネイティブ")
-    ) {
-      // ブルー系は中サイズ（サイズ 2-4）
-      attributes.size = Math.min(4, Math.max(2, attributes.size - 2));
-    } else if (
-      authorLower.includes("レッド") ||
-      authorLower.includes("red") ||
-      authorLower.includes("赤")
-    ) {
-      // レッド系は大きめ（サイズ 4-6）
-      attributes.size = Math.min(6, Math.max(4, attributes.size));
-      attributes.strength = Math.min(10, attributes.strength + 1); // 少し強い
-    }
+    // グリーン族は小さめ（サイズ 1-3）
+    attributes.size = Math.min(3, Math.max(1, attributes.size - 3));
 
     // 外見の決定
     const bodyTypes: Creature["appearance"]["bodyType"][] = [
@@ -393,12 +408,20 @@ export class CreatureGenerator {
     // パラメータの合計を調整（バランス調整）
     const balancedAttributes = this.balanceAttributes(attributes);
 
-    // 視野を生成
-    const vision = this.generateVision(comment.author);
+    // 視野を生成（種族に基づく）
+    const vision = this.generateVision(species);
+
+    // ランダムなtypeIDを生成
+    const typeId = `type-${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .substring(2, 7)}`;
 
     return {
-      id: `creature-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `creature-${Date.now()}-${Math.random()
+        .toString(36)
+        .substr(2, 9)}-${performance.now()}`,
       name: this.generateName(comment.message, comment.author),
+      typeId: typeId, // キャラクタータイプID
       attributes: balancedAttributes,
       appearance,
       behavior,
@@ -411,12 +434,14 @@ export class CreatureGenerator {
       age: 0,
       author: comment.author,
       comment: comment.message,
-      species: comment.author, // 種族はコメント者で識別
+      species: species, // ユーザーが作成するのは常にグリーン族
       isNewArrival: true, // 新着の外来種フラグ
       reproductionCooldown: 0,
       reproductionHistory: {}, // 繁殖履歴（空）
       wanderAngle: Math.random() * Math.PI * 2, // ランダムな初期方向
       vision, // 視野
+      plantPoints: 0, // 植物ポイント初期値
+      splitCooldown: 0, // 分裂クールダウン初期値
     };
   }
 
@@ -466,50 +491,27 @@ export class CreatureGenerator {
   }
 
   // 種族に応じた視野を生成
-  private generateVision(author: string): { angle: number; range: number } {
-    const authorLower = author.toLowerCase();
-
-    // レッド系：前方のみだが遠くまで見える
-    if (
-      authorLower.includes("レッド") ||
-      authorLower.includes("red") ||
-      authorLower.includes("赤")
-    ) {
-      return {
-        angle: Math.PI * 0.5 + Math.random() * Math.PI * 0.3, // 90°～144°
-        range: 150 + Math.random() * 80, // 150-230
-      };
-    }
-
-    // ブルー系：広く見える
-    if (
-      authorLower.includes("ブルー") ||
-      authorLower.includes("blue") ||
-      authorLower.includes("青") ||
-      authorLower.includes("ネイティブ")
-    ) {
-      return {
-        angle: Math.PI * 1.2 + Math.random() * Math.PI * 0.6, // 216°～324°
-        range: 100 + Math.random() * 50, // 100-150
-      };
-    }
-
-    // グリーン系：全方位だが狭い
-    if (
-      authorLower.includes("グリーン") ||
-      authorLower.includes("green") ||
-      authorLower.includes("緑")
-    ) {
+  private generateVision(species: string): { angle: number; range: number } {
+    // グリーン系：全方位だが狭い（逃げるために周囲を警戒）
+    if (species === "グリーン族") {
       return {
         angle: Math.PI * 2, // 360°
         range: 50 + Math.random() * 30, // 50-80
       };
     }
 
-    // デフォルト
+    // レッド系：前方のみだが遠くまで見える（鬼として追跡）
+    if (species === "レッド族") {
+      return {
+        angle: Math.PI * 0.5 + Math.random() * Math.PI * 0.3, // 90°～144°
+        range: 150 + Math.random() * 80, // 150-230
+      };
+    }
+
+    // デフォルト（グリーン）
     return {
-      angle: Math.PI,
-      range: 100,
+      angle: Math.PI * 2,
+      range: 50,
     };
   }
 
@@ -936,6 +938,47 @@ export class CreatureGenerator {
     }
 
     // -1.0 ~ 1.0 または 0.0 ~ 1.0 に正規化
+    // 障害物対応を追加
+    let obstacleAwareness = 0.5;
+    let obstacleStrategy: "avoid" | "use-as-cover" | "ignore" = "avoid";
+
+    // 賢い生物は障害物をよく認識
+    if (attributes.intelligence > 6) {
+      obstacleAwareness = Math.min(1, obstacleAwareness + 0.3);
+    }
+
+    // 臆病な草食動物は隠れる
+    if (behavior.diet === "herbivore" && fleeWhenWeak > 0.6) {
+      obstacleStrategy = "use-as-cover";
+      obstacleAwareness = Math.min(1, obstacleAwareness + 0.2);
+    }
+
+    // 攻撃的な肉食動物は障害物を無視することがある
+    if (behavior.diet === "carnivore" && aggressiveness > 0.7) {
+      obstacleStrategy = Math.random() > 0.5 ? "ignore" : "avoid";
+    }
+
+    // 背後攻撃・反撃傾向の計算
+    let stealthAttack = 0.3; // デフォルト
+    let counterAttack = 0.2; // デフォルト
+
+    // 賢い生物は背後攻撃を好む
+    if (attributes.intelligence > 6) {
+      stealthAttack = Math.min(1, stealthAttack + 0.3);
+    }
+
+    // 攻撃的な生物は反撃を好む
+    if (aggressiveness > 0.5) {
+      counterAttack = Math.min(1, counterAttack + aggressiveness * 0.4);
+      stealthAttack = Math.min(1, stealthAttack + 0.2);
+    }
+
+    // 臆病な生物は背後攻撃を好むが反撃はしない
+    if (fleeWhenWeak > 0.7) {
+      stealthAttack = Math.min(1, stealthAttack + 0.2);
+      counterAttack = Math.max(0, counterAttack - 0.2);
+    }
+
     return {
       approachAlly: Math.max(-1, Math.min(1, approachAlly)),
       approachEnemy: Math.max(-1, Math.min(1, approachEnemy)),
@@ -943,6 +986,214 @@ export class CreatureGenerator {
       aggressiveness: Math.max(0, Math.min(1, aggressiveness)),
       curiosity: Math.max(0, Math.min(1, curiosity)),
       territoriality: Math.max(0, Math.min(1, territoriality)),
+      obstacleAwareness: Math.max(0, Math.min(1, obstacleAwareness)),
+      obstacleStrategy,
+      stealthAttack: Math.max(0, Math.min(1, stealthAttack)),
+      counterAttack: Math.max(0, Math.min(1, counterAttack)),
+    };
+  }
+
+  // レッド族（鬼）を生成する
+  generateRedCreature(index: number): Creature {
+    const redNames = [
+      "ハンター",
+      "ストーカー",
+      "シャドウ",
+      "プレデター",
+      "レイヴン",
+      "ダークネス",
+      "レッドアイ",
+      "ブラッドハウンド",
+    ];
+
+    const position = {
+      x: Math.random() * 800,
+      y: Math.random() * 600,
+    };
+
+    // レッド族の属性（大きく、強く、グリーンより10%速い）
+    const attributes = {
+      speed: 7 + Math.floor(Math.random() * 3), // 7-9（グリーンの平均6より10%程度速い）
+      size: 5 + Math.floor(Math.random() * 3), // 5-7
+      strength: 7 + Math.floor(Math.random() * 3), // 7-9
+      intelligence: 5 + Math.floor(Math.random() * 3), // 5-7
+      social: 2 + Math.floor(Math.random() * 3), // 2-4（単独行動）
+    };
+
+    const appearance = {
+      bodyType: "triangle" as const,
+      primaryColor: `#${Math.floor(180 + Math.random() * 75).toString(16)}0000`,
+      secondaryColor: `#${Math.floor(100 + Math.random() * 80).toString(
+        16
+      )}0000`,
+      hasEyes: true,
+      hasTentacles: false,
+      hasWings: false,
+      pattern: "solid" as const,
+    };
+
+    const behavior = {
+      diet: "carnivore" as const,
+      activity: "cathemeral" as const,
+      social: "solitary" as const,
+    };
+
+    const traits = {
+      strengths: ["追跡能力", "攻撃力", "持久力"],
+      weaknesses: ["背後から弱い", "群れない"],
+    };
+
+    // 鬼らしい行動プログラム
+    const behaviorProgram = {
+      approachAlly: -0.3, // 同族をあまり気にしない
+      approachEnemy: 0.9, // グリーンに積極的に接近
+      fleeWhenWeak: 0.1, // ほとんど逃げない
+      aggressiveness: 0.9, // 非常に攻撃的
+      curiosity: 0.7, // 積極的に動き回る
+      territoriality: 0.2, // 縄張り意識は低い
+      obstacleAwareness: 0.4, // 障害物認識は中程度
+      obstacleStrategy: "avoid" as const, // 基本は避ける
+      stealthAttack: 0.0, // 背後攻撃しない（鬼側）
+      counterAttack: 0.0, // 反撃不要（常に攻撃側）
+    };
+
+    const vision = this.generateVision("レッド族");
+
+    // システム生成のレッドは固定typeID
+    const typeId = `red-system-${index}`;
+
+    return {
+      id: `red-creature-${Date.now()}-${index}-${performance.now()}`,
+      name: redNames[index % redNames.length],
+      typeId: typeId, // システムレッドの固定typeID
+      attributes,
+      appearance,
+      behavior,
+      traits,
+      behaviorProgram,
+      position,
+      homePosition: { ...position },
+      velocity: {
+        x: (Math.random() - 0.5) * 2,
+        y: (Math.random() - 0.5) * 2,
+      },
+      energy: 100,
+      age: 0,
+      author: "システム",
+      comment: "自動生成されたレッド族（鬼）",
+      species: "レッド族",
+      isNewArrival: false,
+      reproductionCooldown: 0,
+      reproductionHistory: {},
+      wanderAngle: Math.random() * Math.PI * 2,
+      vision,
+      plantPoints: 0, // レッドはポイントを集めない
+      splitCooldown: 0,
+    };
+  }
+
+  // グリーン族（逃げる側）を生成する（自動補充用）
+  generateGreenCreature(index: number): Creature {
+    const greenNames = [
+      "リーフ",
+      "モス",
+      "フォレスト",
+      "スプラウト",
+      "バド",
+      "クローバー",
+      "ミント",
+      "セージ",
+    ];
+
+    const position = {
+      x: 50 + Math.random() * 700, // 画面端を避ける
+      y: 50 + Math.random() * 500,
+    };
+
+    // グリーン族の属性（小さめ、素早い、知的）
+    const attributes = {
+      speed: 5 + Math.floor(Math.random() * 3), // 5-7
+      size: 3 + Math.floor(Math.random() * 2), // 3-4
+      strength: 2 + Math.floor(Math.random() * 2), // 2-3
+      intelligence: 6 + Math.floor(Math.random() * 3), // 6-8
+      social: 5 + Math.floor(Math.random() * 4), // 5-8（群れる傾向）
+    };
+
+    const appearance = {
+      bodyType: "circle" as const,
+      primaryColor: `#${Math.floor(40 + Math.random() * 40).toString(
+        16
+      )}${Math.floor(180 + Math.random() * 75).toString(16)}${Math.floor(
+        40 + Math.random() * 40
+      ).toString(16)}`,
+      secondaryColor: `#${Math.floor(60 + Math.random() * 40).toString(
+        16
+      )}${Math.floor(120 + Math.random() * 60).toString(16)}${Math.floor(
+        60 + Math.random() * 40
+      ).toString(16)}`,
+      hasEyes: true,
+      hasTentacles: false,
+      hasWings: false,
+      pattern: "solid" as const,
+    };
+
+    const behavior = {
+      diet: "herbivore" as const,
+      activity: "diurnal" as const,
+      social: "pack" as const,
+    };
+
+    const traits = {
+      strengths: ["逃走能力", "警戒心", "繁殖力"],
+      weaknesses: ["戦闘力が低い", "肉食動物に弱い"],
+    };
+
+    // 草食動物らしい行動プログラム
+    const behaviorProgram = {
+      approachAlly: 0.3, // 仲間に近づく
+      approachEnemy: -0.9, // 敵から逃げる
+      fleeWhenWeak: 0.9, // 弱いと逃げる
+      aggressiveness: 0.1, // 攻撃性は低い
+      curiosity: 0.5, // 適度に動く
+      territoriality: 0.3, // 縄張り意識は低め
+      obstacleAwareness: 0.7, // 障害物をよく認識
+      obstacleStrategy: "use-as-cover" as const, // 隠れ場所として活用
+      stealthAttack: 0.4, // 背後攻撃は中程度
+      counterAttack: 0.1, // 反撃はほぼしない
+    };
+
+    const vision = this.generateVision("グリーン族");
+
+    // システム生成のグリーンは固定typeID
+    const typeId = `green-system-${index}`;
+
+    return {
+      id: `green-creature-${Date.now()}-${index}-${performance.now()}`,
+      name: greenNames[index % greenNames.length],
+      typeId: typeId, // システムグリーンの固定typeID
+      attributes,
+      appearance,
+      behavior,
+      traits,
+      behaviorProgram,
+      position,
+      homePosition: { ...position },
+      velocity: {
+        x: (Math.random() - 0.5) * 2,
+        y: (Math.random() - 0.5) * 2,
+      },
+      energy: 100,
+      age: 0,
+      author: "システム",
+      comment: "自動生成されたグリーン族",
+      species: "グリーン族",
+      isNewArrival: false,
+      reproductionCooldown: 0,
+      reproductionHistory: {},
+      wanderAngle: Math.random() * Math.PI * 2,
+      vision,
+      plantPoints: 0,
+      splitCooldown: 0,
     };
   }
 

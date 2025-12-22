@@ -3,13 +3,17 @@ import { Creature } from './types/creature'
 import EcosystemCanvas from './components/EcosystemCanvas'
 import ControlPanel from './components/ControlPanel'
 import CreatureList from './components/CreatureList'
+import Ranking from './components/Ranking'
 import './App.css'
+
+const RESET_INTERVAL = 5 * 60; // 5分（秒単位）
 
 function App() {
   const [creatures, setCreatures] = useState<Creature[]>([])
   const [ws, setWs] = useState<WebSocket | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [timeRemaining, setTimeRemaining] = useState(RESET_INTERVAL)
 
   // 初期種族をロード
   useEffect(() => {
@@ -67,30 +71,6 @@ function App() {
     }
   }, [])
 
-  // デバッグ用: 手動で生物を作成
-  const createTestCreature = useCallback(async (comment: string) => {
-    try {
-      const response = await fetch('http://localhost:3001/api/creature/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          comment: {
-            author: 'テストユーザー',
-            message: comment,
-            timestamp: new Date()
-          }
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to create creature')
-      }
-    } catch (error) {
-      console.error('Error creating creature:', error)
-    }
-  }, [])
 
   // YouTube配信開始
   const startYouTubeLive = useCallback(async (videoId: string) => {
@@ -131,6 +111,33 @@ function App() {
     }
   }, [])
 
+  // ランキングリセットタイマー
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimeRemaining((prev) => {
+        if (prev <= 1) {
+          // リセット実行
+          resetRanking();
+          return RESET_INTERVAL;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // ランキングリセット関数
+  const resetRanking = useCallback(() => {
+    setCreatures((prevCreatures) =>
+      prevCreatures.map((creature) => ({
+        ...creature,
+        plantPoints: 0, // 全ての植物ポイントをリセット
+      }))
+    );
+    console.log("ランキングがリセットされました");
+  }, []);
+
   if (isLoading) {
     return (
       <div className="app loading">
@@ -158,11 +165,11 @@ function App() {
             creatures={creatures}
             onCreatureUpdate={setCreatures}
           />
+          <Ranking creatures={creatures} timeRemaining={timeRemaining} />
         </div>
 
         <aside className="sidebar">
           <ControlPanel
-            onCreateTest={createTestCreature}
             onStartYouTube={startYouTubeLive}
             onClearAll={clearAllCreatures}
           />

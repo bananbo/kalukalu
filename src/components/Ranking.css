@@ -1,0 +1,212 @@
+.ranking-panel {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  width: 220px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #555;
+  border-radius: 6px;
+  padding: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  max-height: calc(100vh - 20px);
+  overflow-y: auto;
+  z-index: 100;
+  font-size: 12px;
+}
+
+.ranking-panel h2 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: #333;
+  border-bottom: 1px solid #999;
+  padding-bottom: 6px;
+}
+
+.time-remaining {
+  text-align: center;
+  font-size: 11px;
+  color: #666;
+  margin-bottom: 10px;
+  padding: 4px;
+  background: #f0f0f0;
+  border-radius: 3px;
+}
+
+.time-remaining .time {
+  font-weight: bold;
+  color: #ff6b6b;
+  font-size: 12px;
+}
+
+.ranking-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.no-data {
+  text-align: center;
+  color: #999;
+  padding: 10px;
+  font-size: 11px;
+}
+
+.ranking-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  background: #f8f8f8;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+  transition: all 0.2s;
+}
+
+.ranking-item:hover {
+  background: #e8e8e8;
+}
+
+.ranking-item.first-place {
+  background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+  border: 1px solid #daa520;
+  box-shadow: 0 1px 4px rgba(255, 215, 0, 0.3);
+}
+
+.ranking-item .rank {
+  font-size: 12px;
+  font-weight: bold;
+  color: #333;
+  min-width: 24px;
+  text-align: center;
+}
+
+.ranking-item.first-place .rank {
+  color: #b8860b;
+  font-size: 13px;
+}
+
+.ranking-item .author-info {
+  flex: 1;
+  margin: 0 6px;
+  min-width: 0;
+}
+
+.ranking-item .creature-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ranking-item .count-badge {
+  display: inline-block;
+  background: #4caf50;
+  color: white;
+  font-size: 8px;
+  font-weight: bold;
+  padding: 1px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.ranking-item .creature-author {
+  font-size: 9px;
+  color: #666;
+}
+
+.ranking-item .author-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 1px;
+}
+
+.ranking-item .creature-count {
+  font-size: 10px;
+  color: #666;
+}
+
+.ranking-item .points-info {
+  text-align: right;
+  min-width: 50px;
+}
+
+.ranking-item .points {
+  font-size: 13px;
+  font-weight: bold;
+  color: #4caf50;
+}
+
+.ranking-item .today-pts {
+  font-size: 9px;
+  color: #ff9800;
+  margin-top: 1px;
+}
+
+.ranking-item .current-pts {
+  font-size: 8px;
+  color: #4caf50;
+  margin-top: 1px;
+}
+
+.ranking-item.first-place .points {
+  color: #2e7d32;
+  font-size: 14px;
+}
+
+.ranking-item.inactive {
+  opacity: 0.6;
+  background: #e0e0e0;
+}
+
+.ranking-item.inactive .author-name {
+  color: #888;
+}
+
+/* 累計1位・今日1位 */
+.top-players {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.top-player {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+.top-player.alltime {
+  background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+  border: 1px solid #daa520;
+}
+
+.top-player.today {
+  background: linear-gradient(135deg, #87ceeb 0%, #add8e6 100%);
+  border: 1px solid #4682b4;
+}
+
+.top-player .label {
+  font-weight: bold;
+  margin-right: 6px;
+  min-width: 50px;
+}
+
+.top-player .name {
+  flex: 1;
+  font-weight: 600;
+  color: #333;
+}
+
+.top-player .pts {
+  font-weight: bold;
+  color: #2e7d32;
+}

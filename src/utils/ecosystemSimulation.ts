@@ -1,9 +1,12 @@
 import {
   Creature,
   Plant,
+  Obstacle,
   canEat,
   getFoodChainTier,
   getDefaultVision,
+  getSpeciesType,
+  canAttackFromBehind,
 } from "../types/creature";
 
 // 距離計算
@@ -26,6 +29,97 @@ export function checkCollision(c1: Creature, c2: Creature): boolean {
   );
   const minDist = (c1.attributes.size + c2.attributes.size) * 2.5; // サイズに応じた衝突判定
   return dist < minDist;
+}
+
+// 障害物との衝突判定
+export function checkObstacleCollision(
+  creature: Creature,
+  obstacle: Obstacle
+): { collides: boolean; pushX: number; pushY: number } {
+  const creatureRadius = creature.attributes.size * 2.5;
+  const cx = creature.position.x;
+  const cy = creature.position.y;
+
+  // 障害物の範囲
+  const left = obstacle.position.x;
+  const right = obstacle.position.x + obstacle.width;
+  const top = obstacle.position.y;
+  const bottom = obstacle.position.y + obstacle.height;
+
+  // 最も近い点を計算
+  const closestX = Math.max(left, Math.min(cx, right));
+  const closestY = Math.max(top, Math.min(cy, bottom));
+
+  const dist = distance(cx, cy, closestX, closestY);
+
+  if (dist < creatureRadius) {
+    // 衝突している - 押し戻す方向を計算
+    const overlap = creatureRadius - dist;
+    let pushX = 0;
+    let pushY = 0;
+
+    if (dist > 0) {
+      pushX = ((cx - closestX) / dist) * overlap;
+      pushY = ((cy - closestY) / dist) * overlap;
+    } else {
+      // 完全に中に入っている場合は上方向に押し出す
+      pushY = -overlap;
+    }
+
+    return { collides: true, pushX, pushY };
+  }
+
+  return { collides: false, pushX: 0, pushY: 0 };
+}
+
+// ランダムな障害物を生成
+export function createRandomObstacles(
+  count: number,
+  canvasWidth: number,
+  canvasHeight: number
+): Obstacle[] {
+  const obstacles: Obstacle[] = [];
+  const margin = 100; // 画面端からのマージン
+
+  for (let i = 0; i < count; i++) {
+    const types: Array<"wall" | "rock" | "tree"> = ["wall", "rock", "tree"];
+    const type = types[Math.floor(Math.random() * types.length)];
+
+    let width: number, height: number;
+
+    if (type === "wall") {
+      // 壁は細長い
+      if (Math.random() > 0.5) {
+        width = 20 + Math.random() * 30;
+        height = 80 + Math.random() * 120;
+      } else {
+        width = 80 + Math.random() * 120;
+        height = 20 + Math.random() * 30;
+      }
+    } else if (type === "rock") {
+      // 岩はほぼ正方形
+      const size = 40 + Math.random() * 60;
+      width = size;
+      height = size * (0.8 + Math.random() * 0.4);
+    } else {
+      // 木は中くらい
+      width = 30 + Math.random() * 40;
+      height = 30 + Math.random() * 40;
+    }
+
+    const x = margin + Math.random() * (canvasWidth - 2 * margin - width);
+    const y = margin + Math.random() * (canvasHeight - 2 * margin - height);
+
+    obstacles.push({
+      id: `obstacle-${i}-${Date.now()}`,
+      position: { x, y },
+      width,
+      height,
+      type,
+    });
+  }
+
+  return obstacles;
 }
 
 // 植物との衝突判定
@@ -77,7 +171,7 @@ export function handlePredation(
   };
 }
 
-// 戦闘処理（捕食関係でない場合の戦闘）
+// 戦闘処理（鬼ごっこシステム）
 export function handleCombat(
   c1: Creature,
   c2: Creature
@@ -87,81 +181,74 @@ export function handleCombat(
   c1EnergyGain: number;
   c2EnergyGain: number;
 } {
-  // 同じ種族同士は戦闘しない（レッド系の共食い除く）
-  if (c1.species === c2.species && getFoodChainTier(c1.species) !== "apex") {
+  const c1Type = getSpeciesType(c1.species);
+  const c2Type = getSpeciesType(c2.species);
+
+  // 同じ種族同士は戦闘しない
+  if (c1Type === c2Type) {
     return { c1Damage: 0, c2Damage: 0, c1EnergyGain: 0, c2EnergyGain: 0 };
   }
 
-  // 捕食関係をチェック
-  const c1CanEatC2 = canEat(c1, c2);
-  const c2CanEatC1 = canEat(c2, c1);
-
-  // 捕食処理（空腹時のみ - エネルギーが70以下）
-  const HUNGER_THRESHOLD = 70;
-
-  if (c1CanEatC2 && c1.energy < HUNGER_THRESHOLD) {
-    const result = handlePredation(c1, c2);
-    return {
-      c1Damage: 0,
-      c2Damage: result.preyDamage,
-      c1EnergyGain: result.predatorEnergyGain,
-      c2EnergyGain: 0,
-    };
+  // グリーンがレッドを背後から攻撃する場合（グリーンの勝利）
+  if (c1Type === "green" && c2Type === "red") {
+    if (canAttackFromBehind(c1, c2)) {
+      // グリーン(c1)がレッド(c2)を背後から倒す
+      return { c1Damage: 0, c2Damage: 100, c1EnergyGain: 0, c2EnergyGain: 0 };
+    }
   }
 
-  if (c2CanEatC1 && c2.energy < HUNGER_THRESHOLD) {
-    const result = handlePredation(c2, c1);
-    return {
-      c1Damage: result.preyDamage,
-      c2Damage: 0,
-      c1EnergyGain: 0,
-      c2EnergyGain: result.predatorEnergyGain,
-    };
+  if (c2Type === "green" && c1Type === "red") {
+    if (canAttackFromBehind(c2, c1)) {
+      // グリーン(c2)がレッド(c1)を背後から倒す
+      return { c1Damage: 100, c2Damage: 0, c1EnergyGain: 0, c2EnergyGain: 0 };
+    }
   }
 
-  // 捕食関係がない場合は通常の戦闘
-  const c1Power =
-    c1.attributes.strength * 0.5 +
-    c1.attributes.size * 0.3 +
-    c1.attributes.speed * 0.2;
-  const c2Power =
-    c2.attributes.strength * 0.5 +
-    c2.attributes.size * 0.3 +
-    c2.attributes.speed * 0.2;
+  // レッドがグリーンを捕まえる（鬼ごっこ）
+  if (c1Type === "red" && c2Type === "green") {
+    // レッド(c1)がグリーン(c2)を捕まえる
+    const damage = 30 + c1.attributes.strength * 3;
+    return { c1Damage: 0, c2Damage: damage, c1EnergyGain: 40, c2EnergyGain: 0 };
+  }
 
-  const baseDamage = 5;
-  const c1Damage = Math.max(0, ((c2Power - c1Power * 0.5) * baseDamage) / 10);
-  const c2Damage = Math.max(0, ((c1Power - c2Power * 0.5) * baseDamage) / 10);
+  if (c2Type === "red" && c1Type === "green") {
+    // レッド(c2)がグリーン(c1)を捕まえる
+    const damage = 30 + c2.attributes.strength * 3;
+    return { c1Damage: damage, c2Damage: 0, c1EnergyGain: 0, c2EnergyGain: 40 };
+  }
 
-  return { c1Damage, c2Damage, c1EnergyGain: 0, c2EnergyGain: 0 };
+  // その他の場合は戦闘なし
+  return { c1Damage: 0, c2Damage: 0, c1EnergyGain: 0, c2EnergyGain: 0 };
 }
 
 // 植物を食べる処理
 export function eatPlant(
   creature: Creature,
   plant: Plant
-): { energyGain: number; canEat: boolean } {
-  const tier = getFoodChainTier(creature.species);
+): { energyGain: number; canEat: boolean; plantPointsGain: number } {
+  const type = getSpeciesType(creature.species);
 
-  // 草食（グリーン系）のみが植物を食べられる
-  if (tier !== "herbivore") {
-    return { energyGain: 0, canEat: false };
+  // グリーンのみが植物を食べられる
+  if (type !== "green") {
+    return { energyGain: 0, canEat: false, plantPointsGain: 0 };
   }
 
   if (plant.isConsumed) {
-    return { energyGain: 0, canEat: false };
+    return { energyGain: 0, canEat: false, plantPointsGain: 0 };
   }
 
-  return { energyGain: plant.energy, canEat: true };
+  // 植物を食べると1ポイント獲得
+  return { energyGain: plant.energy, canEat: true, plantPointsGain: 1 };
 }
 
-// 植物を生成
+// 植物を生成（画面端から一定距離離れた位置に）
 export function createPlant(canvasWidth: number, canvasHeight: number): Plant {
+  const MARGIN = 50; // 画面端からの最小距離
   return {
     id: `plant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     position: {
-      x: Math.random() * canvasWidth,
-      y: Math.random() * canvasHeight,
+      x: MARGIN + Math.random() * (canvasWidth - MARGIN * 2),
+      y: MARGIN + Math.random() * (canvasHeight - MARGIN * 2),
     },
     energy: 8 + Math.random() * 7, // 8-15のエネルギー
     size: 3 + Math.random() * 4, // 3-7のサイズ
@@ -191,20 +278,21 @@ export function updatePlants(
   maxPlants: number
 ): Plant[] {
   const REGROWTH_TIME = 300; // 5秒で再生
+  const MARGIN = 50; // 画面端からの最小距離
 
   return plants.map((plant) => {
     if (plant.isConsumed) {
       const newTimer = plant.regrowthTimer + 1;
       if (newTimer >= REGROWTH_TIME) {
-        // 再生
+        // 再生（画面端を避けた位置に）
         return {
           ...plant,
           isConsumed: false,
           regrowthTimer: 0,
           energy: 8 + Math.random() * 7,
           position: {
-            x: Math.random() * canvasWidth,
-            y: Math.random() * canvasHeight,
+            x: MARGIN + Math.random() * (canvasWidth - MARGIN * 2),
+            y: MARGIN + Math.random() * (canvasHeight - MARGIN * 2),
           },
         };
       }
@@ -219,6 +307,11 @@ export function canReproduce(c1: Creature, c2: Creature): boolean {
   // 草食動物（グリーン系）は繁殖不可（分身のみ）
   const tier1 = getFoodChainTier(c1.species);
   if (tier1 === "herbivore") {
+    return false;
+  }
+
+  // レッド族（apex）も繁殖不可（倒されるまで生き続ける裏ボス）
+  if (tier1 === "apex") {
     return false;
   }
 
@@ -240,24 +333,24 @@ export function canReproduce(c1: Creature, c2: Creature): boolean {
   );
 }
 
-// グリーン系（草食）の単独繁殖チェック
-export function canSelfReproduce(creature: Creature): boolean {
-  const tier = getFoodChainTier(creature.species);
-  // 草食動物のみ単独繁殖可能（分裂）
+// グリーンの分裂チェック（植物ポイントベース）
+export function canSplit(creature: Creature): boolean {
+  const type = getSpeciesType(creature.species);
+  // グリーンのみ分裂可能
   return (
-    tier === "herbivore" &&
-    creature.reproductionCooldown <= 0 &&
-    creature.energy > 80 && // より高いエネルギーが必要
-    Math.random() < 0.0008 // さらに低確率
+    type === "green" &&
+    creature.splitCooldown <= 0 &&
+    creature.plantPoints >= 10 && // 10ポイント貯まったら分裂可能
+    creature.energy > 60 // 十分なエネルギーが必要
   );
 }
 
-// 単独繁殖（分裂）
-export function selfReproduce(
+// 分裂（植物ポイントを消費して新しい個体を生成）
+export function split(
   parent: Creature,
   canvasWidth: number,
   canvasHeight: number
-): Creature {
+): { clone: Creature; updatedParent: Creature } {
   // 親の属性をほぼ継承（わずかな変異）
   const attributes = {
     speed: Math.min(
@@ -298,9 +391,12 @@ export function selfReproduce(
     ),
   };
 
-  return {
-    id: `creature-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+  const clone = {
+    id: `creature-${Date.now()}-${Math.random()
+      .toString(36)
+      .substr(2, 9)}-${performance.now()}`,
     name: `${parent.name}分身`,
+    typeId: parent.typeId, // 親のtypeIdを継承
     attributes,
     appearance,
     behavior,
@@ -314,11 +410,33 @@ export function selfReproduce(
     author: parent.author,
     comment: `${parent.name}から分裂`,
     species: parent.species,
-    reproductionCooldown: 500, // 長めのクールダウン
-    reproductionHistory: {}, // 分身は繁殖履歴なし
+    reproductionCooldown: 0,
+    reproductionHistory: {},
     wanderAngle: Math.random() * Math.PI * 2,
     vision: getDefaultVision(parent.species),
+    plantPoints: 0, // 分身は0ポイントからスタート
+    splitCooldown: 300, // 分裂クールダウン（5秒）
   };
+
+  // 親は植物ポイントを10消費し、クールダウンが発生
+  const updatedParent = {
+    ...parent,
+    plantPoints: parent.plantPoints - 10,
+    splitCooldown: 300, // 分裂クールダウン（5秒）
+    energy: parent.energy - 20, // エネルギーも消費
+  };
+
+  return { clone, updatedParent };
+}
+
+// 後方互換性のため（段階的に削除）
+export function selfReproduce(
+  parent: Creature,
+  canvasWidth: number,
+  canvasHeight: number
+): Creature {
+  const result = split(parent, canvasWidth, canvasHeight);
+  return result.clone;
 }
 
 // 子供の生成
@@ -475,7 +593,9 @@ export function reproduce(
   };
 
   return {
-    id: `creature-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    id: `creature-${Date.now()}-${Math.random()
+      .toString(36)
+      .substr(2, 9)}-${performance.now()}`,
     name: `${parent1.name}Jr`,
     attributes,
     appearance,

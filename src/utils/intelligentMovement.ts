@@ -1,10 +1,13 @@
 import {
   Creature,
   Plant,
+  Obstacle,
   getFoodChainTier,
   canEat,
   shouldFleeFrom,
   isInFieldOfView,
+  canAttackFromBehind,
+  getSpeciesType,
 } from "../types/creature";
 
 // 周囲の生物と植物に基づいて移動方向を計算
@@ -13,7 +16,8 @@ export function calculateIntelligentMovement(
   allCreatures: Creature[],
   plants: Plant[],
   canvasWidth: number,
-  canvasHeight: number
+  canvasHeight: number,
+  obstacles: Obstacle[] = []
 ): { x: number; y: number } {
   const program = creature.behaviorProgram;
   const myTier = getFoodChainTier(creature.species);
@@ -134,10 +138,18 @@ export function calculateIntelligentMovement(
         // グリーン系は同族に集まらない（自由に動く）
         // 何もしない
       } else {
-        // ブルー系は通常の同族行動
-        const allyForce = program.approachAlly * closenessFactor * 0.8;
-        forceX += dirX * allyForce;
-        forceY += dirY * allyForce;
+        // ブルー系は通常の同族行動（近すぎる場合は離れる）
+        if (distance < 30) {
+          // 近すぎる場合は離れる
+          const separationForce = ((30 - distance) / 30) * 0.5;
+          forceX -= dirX * separationForce;
+          forceY -= dirY * separationForce;
+        } else {
+          // 遠い場合はゆるく近づく
+          const allyForce = program.approachAlly * closenessFactor * 0.4; // 0.8から0.4に減少
+          forceX += dirX * allyForce;
+          forceY += dirY * allyForce;
+        }
       }
 
       allyCount++;
@@ -150,11 +162,34 @@ export function calculateIntelligentMovement(
       const otherCanEatMe = shouldFleeFrom(creature, other);
 
       if (otherCanEatMe) {
-        // ===== 逃走行動 =====
-        // 相手は捕食者！逃げる
-        const fleeForce = closenessFactor * (0.8 + program.fleeWhenWeak * 0.5);
-        forceX -= dirX * fleeForce;
-        forceY -= dirY * fleeForce;
+        // ===== 逃走 or 背後攻撃行動 =====
+        const stealthAttack = program.stealthAttack ?? 0.3;
+        const counterAttack = program.counterAttack ?? 0.1;
+
+        // 背後攻撃のチャンス判定
+        const canBackstab = canAttackFromBehind(creature, other);
+        const creatureType = getSpeciesType(creature.species);
+
+        if (canBackstab && stealthAttack > 0.3 && creatureType === "green") {
+          // 背後から攻撃できる位置にいる！接近する
+          const backstabForce = stealthAttack * closenessFactor * 1.2;
+          forceX += dirX * backstabForce;
+          forceY += dirY * backstabForce;
+        } else if (counterAttack > 0.5 && creature.energy > 70) {
+          // 反撃傾向が高く、体力がある場合は逃げずに向かう
+          const counterForce = counterAttack * closenessFactor * 0.5;
+          // レッドの背後に回り込むように動く
+          const perpX = -dirY; // 垂直方向
+          const perpY = dirX;
+          forceX += perpX * counterForce;
+          forceY += perpY * counterForce;
+        } else {
+          // 通常の逃走行動
+          const fleeForce =
+            closenessFactor * (0.8 + program.fleeWhenWeak * 0.5);
+          forceX -= dirX * fleeForce;
+          forceY -= dirY * fleeForce;
+        }
 
         // 最も近い脅威を記録
         if (distance < nearestThreatDist) {
@@ -163,39 +198,45 @@ export function calculateIntelligentMovement(
           nearestThreatY = dirY;
         }
 
-        // 弱っている場合はさらに逃げる
-        if (creature.energy < 50) {
+        // 弱っている場合はさらに逃げる（背後攻撃傾向が低い場合のみ）
+        if (creature.energy < 50 && stealthAttack < 0.5) {
           const panicForce =
             ((50 - creature.energy) / 50) * closenessFactor * 0.5;
           forceX -= dirX * panicForce;
           forceY -= dirY * panicForce;
         }
       } else if (iCanEatOther) {
-        // ===== 捕食行動（空腹時のみ） =====
-        const HUNGER_THRESHOLD = 70;
-        if (creature.energy < HUNGER_THRESHOLD) {
-          // 相手は獲物！追う
-          const hungerFactor = Math.max(0.5, (100 - creature.energy) / 100);
-          // 頂点捕食者はより積極的に追う
-          const tierBonus =
-            myTier === "apex" ? 1.5 : myTier === "predator" ? 1.2 : 1.0;
-          const chaseForce =
-            hungerFactor *
-            program.aggressiveness *
-            closenessFactor *
-            1.2 *
-            tierBonus;
+        // ===== 捕食行動 =====
+        // 鬼ごっこシステム: レッドは常にグリーンを追う（空腹度に関係なく）
+        if (myTier === "apex") {
+          // レッドは常に積極的に追跡
+          const chaseForce = program.aggressiveness * closenessFactor * 1.5; // 常に強い追跡力
           forceX += dirX * chaseForce;
           forceY += dirY * chaseForce;
 
-          // 最も近い獲物を記録（植物より優先）
+          // 最も近い獲物を記録
           if (distance < nearestPreyDist) {
             nearestPreyDist = distance;
             nearestPreyX = dirX;
             nearestPreyY = dirY;
           }
+        } else {
+          // その他の場合は空腹時のみ
+          const HUNGER_THRESHOLD = 70;
+          if (creature.energy < HUNGER_THRESHOLD) {
+            const hungerFactor = Math.max(0.5, (100 - creature.energy) / 100);
+            const chaseForce =
+              hungerFactor * program.aggressiveness * closenessFactor * 1.2;
+            forceX += dirX * chaseForce;
+            forceY += dirY * chaseForce;
+
+            if (distance < nearestPreyDist) {
+              nearestPreyDist = distance;
+              nearestPreyX = dirX;
+              nearestPreyY = dirY;
+            }
+          }
         }
-        // 満腹時は獲物を無視（追わない）
       } else {
         // 捕食関係なし - 通常の行動
         let neutralForce = program.approachEnemy * closenessFactor * 0.3;
@@ -205,7 +246,7 @@ export function calculateIntelligentMovement(
     }
   }
 
-  // ===== 群れの中心に向かう力（レッドとグリーンは除外） =====
+  // ===== 群れの中心に向かう力（レッドとグリーンは除外、ブルーは弱めに） =====
   if (allyCount > 0 && program.approachAlly > 0 && myTier === "predator") {
     allyCenterX /= allyCount;
     allyCenterY /= allyCount;
@@ -216,8 +257,10 @@ export function calculateIntelligentMovement(
       toCenterX * toCenterX + toCenterY * toCenterY
     );
 
-    if (toCenterDist > 30) {
-      const cohesionForce = program.approachAlly * 0.3;
+    // ブルー系は群れの中心への引力を弱くして、あまり密集しないようにする
+    if (toCenterDist > 50) {
+      // 距離を50に増加（元は30）
+      const cohesionForce = program.approachAlly * 0.15; // 力を半分に減少（元は0.3）
       forceX += (toCenterX / toCenterDist) * cohesionForce;
       forceY += (toCenterY / toCenterDist) * cohesionForce;
     }
@@ -278,6 +321,56 @@ export function calculateIntelligentMovement(
   if (creature.position.y > canvasHeight - borderMargin) {
     forceY -=
       (creature.position.y - (canvasHeight - borderMargin)) * borderForce;
+  }
+
+  // ===== 障害物回避 =====
+  const obstacleAwareness = program.obstacleAwareness ?? 0.5;
+  const obstacleStrategy = program.obstacleStrategy ?? "avoid";
+
+  if (obstacleStrategy !== "ignore") {
+    for (const obstacle of obstacles) {
+      const obstacleCenterX = obstacle.position.x + obstacle.width / 2;
+      const obstacleCenterY = obstacle.position.y + obstacle.height / 2;
+
+      const dx = creature.position.x - obstacleCenterX;
+      const dy = creature.position.y - obstacleCenterY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      // 障害物の最大サイズを考慮した検知距離
+      const obstacleRadius = Math.max(obstacle.width, obstacle.height) / 2;
+      const detectionDistance = obstacleRadius + 50 + obstacleAwareness * 50;
+
+      if (distance < detectionDistance && distance > 0) {
+        const avoidStrength =
+          ((detectionDistance - distance) / detectionDistance) *
+          obstacleAwareness *
+          0.8;
+
+        if (obstacleStrategy === "use-as-cover" && nearestThreatDist < 100) {
+          // 脅威がいる時は障害物に隠れる
+          const threatDirX = nearestThreatX;
+          const threatDirY = nearestThreatY;
+
+          // 障害物を脅威との間に置くように動く
+          const coverX = obstacleCenterX - threatDirX * obstacleRadius * 1.5;
+          const coverY = obstacleCenterY - threatDirY * obstacleRadius * 1.5;
+          const toCoverX = coverX - creature.position.x;
+          const toCoverY = coverY - creature.position.y;
+          const toCoverDist = Math.sqrt(
+            toCoverX * toCoverX + toCoverY * toCoverY
+          );
+
+          if (toCoverDist > 10) {
+            forceX += (toCoverX / toCoverDist) * avoidStrength * 0.5;
+            forceY += (toCoverY / toCoverDist) * avoidStrength * 0.5;
+          }
+        } else {
+          // 通常は障害物を避ける
+          forceX += (dx / distance) * avoidStrength;
+          forceY += (dy / distance) * avoidStrength;
+        }
+      }
+    }
   }
 
   // ===== 最小移動量の保証（方向を保持して一定方向に動く） =====
