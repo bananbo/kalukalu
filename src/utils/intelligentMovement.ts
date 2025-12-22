@@ -1,0 +1,307 @@
+import {
+  Creature,
+  Plant,
+  getFoodChainTier,
+  canEat,
+  shouldFleeFrom,
+  isInFieldOfView,
+} from "../types/creature";
+
+// 周囲の生物と植物に基づいて移動方向を計算
+export function calculateIntelligentMovement(
+  creature: Creature,
+  allCreatures: Creature[],
+  plants: Plant[],
+  canvasWidth: number,
+  canvasHeight: number
+): { x: number; y: number } {
+  const program = creature.behaviorProgram;
+  const myTier = getFoodChainTier(creature.species);
+  // 視野距離を使用（detectionRangeの代わり）
+  const detectionRange =
+    creature.vision?.range || 120 + creature.attributes.intelligence * 10;
+
+  // 基本速度（さらにゆっくり）
+  const baseSpeed = creature.attributes.speed * 0.08;
+
+  // 力のベクトル
+  let forceX = 0;
+  let forceY = 0;
+
+  // 群れの中心を計算
+  let allyCount = 0;
+  let allyCenterX = 0;
+  let allyCenterY = 0;
+
+  // 最も近い獲物と脅威を追跡
+  let nearestPreyDist = Infinity;
+  let nearestPreyX = 0;
+  let nearestPreyY = 0;
+  let nearestThreatDist = Infinity;
+  let nearestThreatX = 0;
+  let nearestThreatY = 0;
+
+  // ===== 草食動物（グリーン系）は植物を探す =====
+  if (myTier === "herbivore") {
+    const activePlants = plants.filter((p) => !p.isConsumed);
+
+    for (const plant of activePlants) {
+      // 視野内チェック
+      if (!isInFieldOfView(creature, plant.position.x, plant.position.y)) {
+        continue;
+      }
+
+      const dx = plant.position.x - creature.position.x;
+      const dy = plant.position.y - creature.position.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance < nearestPreyDist) {
+        nearestPreyDist = distance;
+        nearestPreyX = dx / distance;
+        nearestPreyY = dy / distance;
+      }
+    }
+
+    // 植物に向かう力（空腹度に応じて強くなる）
+    if (nearestPreyDist < Infinity) {
+      const hungerFactor = Math.max(0.3, (100 - creature.energy) / 100);
+      const plantForce = hungerFactor * 0.8;
+      forceX += nearestPreyX * plantForce;
+      forceY += nearestPreyY * plantForce;
+    }
+  }
+
+  // ===== 頂点捕食者（レッド系）は常に積極的に動く =====
+  if (myTier === "apex") {
+    // ランダムな探索行動（常に動き回る）
+    const wanderStrength = 0.3 + program.curiosity * 0.3;
+    if (Math.random() < 0.1) {
+      const randomAngle = Math.random() * Math.PI * 2;
+      forceX += Math.cos(randomAngle) * wanderStrength;
+      forceY += Math.sin(randomAngle) * wanderStrength;
+    }
+  }
+
+  // ===== 中間捕食者（ブルー系）も探索 =====
+  if (myTier === "predator") {
+    const wanderStrength = 0.2 + program.curiosity * 0.2;
+    if (Math.random() < 0.08) {
+      const randomAngle = Math.random() * Math.PI * 2;
+      forceX += Math.cos(randomAngle) * wanderStrength;
+      forceY += Math.sin(randomAngle) * wanderStrength;
+    }
+  }
+
+  // ===== 他の生物をスキャン =====
+  for (const other of allCreatures) {
+    if (other.id === creature.id) continue;
+
+    // 視野内チェック
+    if (!isInFieldOfView(creature, other.position.x, other.position.y)) {
+      continue;
+    }
+
+    const dx = other.position.x - creature.position.x;
+    const dy = other.position.y - creature.position.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance === 0) continue;
+
+    const dirX = dx / distance;
+    const dirY = dy / distance;
+    const distanceFactor = 1 - distance / detectionRange;
+    const closenessFactor = Math.pow(distanceFactor, 0.5);
+
+    const isSameSpecies = other.species === creature.species;
+
+    if (isSameSpecies) {
+      // ===== 同種族への行動 =====
+      // レッド系は同族を捕食対象として見る
+      if (myTier === "apex") {
+        // 空腹なら同族も追う
+        if (creature.energy < 60) {
+          const hungerForce =
+            ((60 - creature.energy) / 60) * closenessFactor * 0.3;
+          forceX += dirX * hungerForce;
+          forceY += dirY * hungerForce;
+        } else {
+          // それほど空腹でなければ普通の同族行動
+          const allyForce = program.approachAlly * closenessFactor * 0.5;
+          forceX += dirX * allyForce;
+          forceY += dirY * allyForce;
+        }
+      } else if (myTier === "herbivore") {
+        // グリーン系は同族に集まらない（自由に動く）
+        // 何もしない
+      } else {
+        // ブルー系は通常の同族行動
+        const allyForce = program.approachAlly * closenessFactor * 0.8;
+        forceX += dirX * allyForce;
+        forceY += dirY * allyForce;
+      }
+
+      allyCount++;
+      allyCenterX += other.position.x;
+      allyCenterY += other.position.y;
+    } else {
+      // ===== 異種族への行動（食物連鎖に基づく） =====
+
+      const iCanEatOther = canEat(creature, other);
+      const otherCanEatMe = shouldFleeFrom(creature, other);
+
+      if (otherCanEatMe) {
+        // ===== 逃走行動 =====
+        // 相手は捕食者！逃げる
+        const fleeForce = closenessFactor * (0.8 + program.fleeWhenWeak * 0.5);
+        forceX -= dirX * fleeForce;
+        forceY -= dirY * fleeForce;
+
+        // 最も近い脅威を記録
+        if (distance < nearestThreatDist) {
+          nearestThreatDist = distance;
+          nearestThreatX = dirX;
+          nearestThreatY = dirY;
+        }
+
+        // 弱っている場合はさらに逃げる
+        if (creature.energy < 50) {
+          const panicForce =
+            ((50 - creature.energy) / 50) * closenessFactor * 0.5;
+          forceX -= dirX * panicForce;
+          forceY -= dirY * panicForce;
+        }
+      } else if (iCanEatOther) {
+        // ===== 捕食行動（空腹時のみ） =====
+        const HUNGER_THRESHOLD = 70;
+        if (creature.energy < HUNGER_THRESHOLD) {
+          // 相手は獲物！追う
+          const hungerFactor = Math.max(0.5, (100 - creature.energy) / 100);
+          // 頂点捕食者はより積極的に追う
+          const tierBonus =
+            myTier === "apex" ? 1.5 : myTier === "predator" ? 1.2 : 1.0;
+          const chaseForce =
+            hungerFactor *
+            program.aggressiveness *
+            closenessFactor *
+            1.2 *
+            tierBonus;
+          forceX += dirX * chaseForce;
+          forceY += dirY * chaseForce;
+
+          // 最も近い獲物を記録（植物より優先）
+          if (distance < nearestPreyDist) {
+            nearestPreyDist = distance;
+            nearestPreyX = dirX;
+            nearestPreyY = dirY;
+          }
+        }
+        // 満腹時は獲物を無視（追わない）
+      } else {
+        // 捕食関係なし - 通常の行動
+        let neutralForce = program.approachEnemy * closenessFactor * 0.3;
+        forceX += dirX * neutralForce;
+        forceY += dirY * neutralForce;
+      }
+    }
+  }
+
+  // ===== 群れの中心に向かう力（レッドとグリーンは除外） =====
+  if (allyCount > 0 && program.approachAlly > 0 && myTier === "predator") {
+    allyCenterX /= allyCount;
+    allyCenterY /= allyCount;
+
+    const toCenterX = allyCenterX - creature.position.x;
+    const toCenterY = allyCenterY - creature.position.y;
+    const toCenterDist = Math.sqrt(
+      toCenterX * toCenterX + toCenterY * toCenterY
+    );
+
+    if (toCenterDist > 30) {
+      const cohesionForce = program.approachAlly * 0.3;
+      forceX += (toCenterX / toCenterDist) * cohesionForce;
+      forceY += (toCenterY / toCenterDist) * cohesionForce;
+    }
+  }
+
+  // ===== 縄張り意識（ブルー系のみ） =====
+  if (
+    program.territoriality > 0.3 &&
+    creature.homePosition &&
+    myTier === "predator"
+  ) {
+    const territoryDx = creature.homePosition.x - creature.position.x;
+    const territoryDy = creature.homePosition.y - creature.position.y;
+    const territoryDistance = Math.sqrt(
+      territoryDx * territoryDx + territoryDy * territoryDy
+    );
+
+    const territoryRadius = 100 + (1 - program.territoriality) * 150;
+    if (territoryDistance > territoryRadius) {
+      const overflowRatio =
+        (territoryDistance - territoryRadius) / territoryRadius;
+      const territoryForce = program.territoriality * overflowRatio * 0.4;
+      forceX += (territoryDx / territoryDistance) * territoryForce;
+      forceY += (territoryDy / territoryDistance) * territoryForce;
+    }
+  }
+
+  // ===== 好奇心によるランダム移動（獲物がいない時） =====
+  if (program.curiosity > 0.2 && nearestPreyDist === Infinity) {
+    if (Math.random() < program.curiosity * 0.1) {
+      const randomAngle = Math.random() * Math.PI * 2;
+      forceX += Math.cos(randomAngle) * program.curiosity * 0.5;
+      forceY += Math.sin(randomAngle) * program.curiosity * 0.5;
+    }
+  }
+
+  // ===== 脅威からの緊急逃走（近くに捕食者がいる場合） =====
+  if (nearestThreatDist < 60) {
+    const urgencyFactor = (60 - nearestThreatDist) / 60;
+    forceX -= nearestThreatX * urgencyFactor * 1.5;
+    forceY -= nearestThreatY * urgencyFactor * 1.5;
+  }
+
+  // ===== 境界回避 =====
+  const borderMargin = 40;
+  const borderForce = 0.15;
+
+  if (creature.position.x < borderMargin) {
+    forceX += (borderMargin - creature.position.x) * borderForce;
+  }
+  if (creature.position.x > canvasWidth - borderMargin) {
+    forceX -=
+      (creature.position.x - (canvasWidth - borderMargin)) * borderForce;
+  }
+  if (creature.position.y < borderMargin) {
+    forceY += (borderMargin - creature.position.y) * borderForce;
+  }
+  if (creature.position.y > canvasHeight - borderMargin) {
+    forceY -=
+      (creature.position.y - (canvasHeight - borderMargin)) * borderForce;
+  }
+
+  // ===== 最小移動量の保証（方向を保持して一定方向に動く） =====
+  const forceMagnitude = Math.sqrt(forceX * forceX + forceY * forceY);
+  if (forceMagnitude < 0.3) {
+    // 現在の移動方向を基準に、少しずつ方向を変える
+    const currentAngle =
+      creature.wanderAngle ||
+      Math.atan2(creature.velocity.y, creature.velocity.x) ||
+      Math.random() * Math.PI * 2;
+    // 方向変化率はランダム（-0.1 ～ +0.1 ラジアン）
+    const angleChange = (Math.random() - 0.5) * 0.2;
+    const newAngle = currentAngle + angleChange;
+    const driftStrength = 0.25 + Math.random() * 0.1;
+    forceX += Math.cos(newAngle) * driftStrength;
+    forceY += Math.sin(newAngle) * driftStrength;
+  }
+
+  // ===== 速度制限 =====
+  const finalMagnitude = Math.sqrt(forceX * forceX + forceY * forceY);
+  if (finalMagnitude > baseSpeed) {
+    forceX = (forceX / finalMagnitude) * baseSpeed;
+    forceY = (forceY / finalMagnitude) * baseSpeed;
+  }
+
+  return { x: forceX, y: forceY };
+}
