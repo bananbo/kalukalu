@@ -234,4 +234,6 @@ export interface Creature {
   };
   plantPoints: number; // 植物ポイント（グリーンのみ）
   splitCooldown: number; // 分裂クールダウン
+  survivalPoints: number; // 生存ポイント（10秒ごとに+1）
+  survivalFrames: number; // 生存フレーム数（60fps想定）
 }

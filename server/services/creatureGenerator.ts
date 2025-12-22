@@ -106,6 +106,8 @@ interface Creature {
   };
   plantPoints: number; // 植物ポイント（グリーンのみ）
   splitCooldown: number; // 分裂クールダウン
+  survivalPoints: number; // 生存ポイント（10秒ごとに+1）
+  survivalFrames: number; // 生存フレーム数（60fps想定）
 }
 
 export class CreatureGenerator {
@@ -307,6 +309,8 @@ export class CreatureGenerator {
       vision: aiParams.vision,
       plantPoints: 0, // 植物ポイント初期値
       splitCooldown: 0, // 分裂クールダウン初期値
+      survivalPoints: 0, // 生存ポイント初期値
+      survivalFrames: 0, // 生存フレーム数初期値
     };
   }
 
@@ -442,6 +446,8 @@ export class CreatureGenerator {
       vision, // 視野
       plantPoints: 0, // 植物ポイント初期値
       splitCooldown: 0, // 分裂クールダウン初期値
+      survivalPoints: 0, // 生存ポイント初期値
+      survivalFrames: 0, // 生存フレーム数初期値
     };
   }
 
@@ -1089,6 +1095,8 @@ export class CreatureGenerator {
       vision,
       plantPoints: 0, // レッドはポイントを集めない
       splitCooldown: 0,
+      survivalPoints: 0, // 生存ポイント初期値
+      survivalFrames: 0, // 生存フレーム数初期値
     };
   }
 
@@ -1194,6 +1202,8 @@ export class CreatureGenerator {
       vision,
       plantPoints: 0,
       splitCooldown: 0,
+      survivalPoints: 0, // 生存ポイント初期値
+      survivalFrames: 0, // 生存フレーム数初期値
     };
   }
 

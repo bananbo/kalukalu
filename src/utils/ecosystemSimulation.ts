@@ -416,6 +416,8 @@ export function split(
     vision: getDefaultVision(parent.species),
     plantPoints: 0, // 分身は0ポイントからスタート
     splitCooldown: 300, // 分裂クールダウン（5秒）
+    survivalPoints: 0, // 生存ポイントは0からスタート
+    survivalFrames: 0, // 生存フレーム数も0から
   };
 
   // 親は植物ポイントを10消費し、クールダウンが発生
@@ -614,6 +616,10 @@ export function reproduce(
     reproductionHistory: {}, // 新しい生物は繁殖履歴なし
     wanderAngle: Math.random() * Math.PI * 2,
     vision: getDefaultVision(parent1.species),
+    plantPoints: 0, // 植物ポイント初期値
+    splitCooldown: 0, // 分裂クールダウン初期値
+    survivalPoints: 0, // 生存ポイント初期値
+    survivalFrames: 0, // 生存フレーム数初期値
   };
 }
 

@@ -4,7 +4,6 @@ import "./Ranking.css";
 
 interface RankingProps {
   creatures: Creature[];
-  timeRemaining: number; // 残り時間（秒）
 }
 
 // typeIDごとのスコア
@@ -54,11 +53,25 @@ function saveStoredRanking(ranking: StoredRanking): void {
   }
 }
 
-export default function Ranking({ creatures, timeRemaining }: RankingProps) {
+export default function Ranking({ creatures }: RankingProps) {
   const [storedRanking, setStoredRanking] = useState<StoredRanking>(() =>
     loadStoredRanking()
   );
   const lastPointsRef = useRef<Record<string, number>>({});
+
+  // ランキングリセット関数
+  const handleResetRanking = () => {
+    if (window.confirm("ランキングをリセットしますか？この操作は取り消せません。")) {
+      const newRanking: StoredRanking = {
+        allTime: {},
+        today: {},
+        todayDate: getTodayDate(),
+      };
+      setStoredRanking(newRanking);
+      saveStoredRanking(newRanking);
+      lastPointsRef.current = {};
+    }
+  };
 
   // グリーン族のみ（ユーザー生成のみ）
   const greenCreatures = creatures.filter((creature) => {
@@ -83,7 +96,8 @@ export default function Ranking({ creatures, timeRemaining }: RankingProps) {
       });
     }
     const score = typeScores.get(c.typeId)!;
-    score.points += c.plantPoints;
+    // 植物ポイント + 生存ポイントを合計
+    score.points += c.plantPoints + (c.survivalPoints || 0);
     score.count++;
   });
 
@@ -151,6 +165,11 @@ export default function Ranking({ creatures, timeRemaining }: RankingProps) {
   const aliveTypeIds = new Set(currentScores.map((s) => s.typeId));
 
   const combinedRanking = Object.entries(storedRanking.allTime)
+    .filter(([typeId, data]) => {
+      // システム生成のtypeIDを除外
+      const isSystemTypeId = typeId.startsWith('green-system-') || typeId.startsWith('red-system-');
+      return !isSystemTypeId;
+    })
     .map(([typeId, data]) => {
       const currentScore = currentScores.find((s) => s.typeId === typeId);
       return {
@@ -165,11 +184,6 @@ export default function Ranking({ creatures, timeRemaining }: RankingProps) {
       };
     })
     .sort((a, b) => b.allTimePoints - a.allTimePoints);
-
-  // 残り時間
-  const minutes = Math.floor(timeRemaining / 60);
-  const seconds = timeRemaining % 60;
-  const timeString = `${minutes}:${seconds.toString().padStart(2, "0")}`;
 
   return (
     <div className="ranking-panel">
@@ -193,9 +207,14 @@ export default function Ranking({ creatures, timeRemaining }: RankingProps) {
         )}
       </div>
 
-      <div className="time-remaining">
-        リセットまで: <span className="time">{timeString}</span>
-      </div>
+      {/* ランキングリセットボタン */}
+      <button
+        className="reset-ranking-btn"
+        onClick={handleResetRanking}
+        title="ランキングを完全にリセット"
+      >
+        🔄 ランキングリセット
+      </button>
 
       <div className="ranking-list">
         {combinedRanking.length === 0 ? (

@@ -6,14 +6,11 @@ import CreatureList from './components/CreatureList'
 import Ranking from './components/Ranking'
 import './App.css'
 
-const RESET_INTERVAL = 5 * 60; // 5分（秒単位）
-
 function App() {
   const [creatures, setCreatures] = useState<Creature[]>([])
   const [ws, setWs] = useState<WebSocket | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [timeRemaining, setTimeRemaining] = useState(RESET_INTERVAL)
 
   // 初期種族をロード
   useEffect(() => {
@@ -111,33 +108,6 @@ function App() {
     }
   }, [])
 
-  // ランキングリセットタイマー
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTimeRemaining((prev) => {
-        if (prev <= 1) {
-          // リセット実行
-          resetRanking();
-          return RESET_INTERVAL;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // ランキングリセット関数
-  const resetRanking = useCallback(() => {
-    setCreatures((prevCreatures) =>
-      prevCreatures.map((creature) => ({
-        ...creature,
-        plantPoints: 0, // 全ての植物ポイントをリセット
-      }))
-    );
-    console.log("ランキングがリセットされました");
-  }, []);
-
   if (isLoading) {
     return (
       <div className="app loading">
@@ -165,10 +135,10 @@ function App() {
             creatures={creatures}
             onCreatureUpdate={setCreatures}
           />
-          <Ranking creatures={creatures} timeRemaining={timeRemaining} />
         </div>
 
         <aside className="sidebar">
+          <Ranking creatures={creatures} />
           <ControlPanel
             onStartYouTube={startYouTubeLive}
             onClearAll={clearAllCreatures}

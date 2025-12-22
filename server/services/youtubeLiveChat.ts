@@ -1,5 +1,5 @@
-import { google } from 'googleapis';
-import { EventEmitter } from 'events';
+import { google } from "googleapis";
+import { EventEmitter } from "events";
 
 interface YouTubeComment {
   author: string;
@@ -13,13 +13,16 @@ export class YouTubeLiveChat extends EventEmitter {
   private liveChatId: string | null = null;
   private pollingInterval: NodeJS.Timeout | null = null;
   private nextPageToken: string | undefined;
+  // YouTube API Quota対策: 1日10,000ユニット制限を守るため、
+  // 1リクエスト5ユニット消費 * 24時間稼働の場合、約43.2秒以上の間隔が必要
+  private readonly MIN_POLLING_INTERVAL = 45000;
 
   constructor(videoId: string) {
     super();
     this.videoId = videoId;
     this.youtube = google.youtube({
-      version: 'v3',
-      auth: process.env.YOUTUBE_API_KEY
+      version: "v3",
+      auth: process.env.YOUTUBE_API_KEY,
     });
   }
 
@@ -27,23 +30,24 @@ export class YouTubeLiveChat extends EventEmitter {
     try {
       // 動画からライブチャットIDを取得
       const videoResponse = await this.youtube.videos.list({
-        part: ['liveStreamingDetails'],
-        id: [this.videoId]
+        part: ["liveStreamingDetails"],
+        id: [this.videoId],
       });
 
-      const liveChatId = videoResponse.data.items?.[0]?.liveStreamingDetails?.activeLiveChatId;
+      const liveChatId =
+        videoResponse.data.items?.[0]?.liveStreamingDetails?.activeLiveChatId;
 
       if (!liveChatId) {
-        throw new Error('この動画にアクティブなライブチャットが見つかりません');
+        throw new Error("この動画にアクティブなライブチャットが見つかりません");
       }
 
       this.liveChatId = liveChatId;
-      console.log('Live Chat ID:', this.liveChatId);
+      console.log("Live Chat ID:", this.liveChatId);
 
       // コメントのポーリング開始
       this.startPolling();
     } catch (error) {
-      console.error('Error starting YouTube Live Chat:', error);
+      console.error("Error starting YouTube Live Chat:", error);
       throw error;
     }
   }
@@ -55,34 +59,42 @@ export class YouTubeLiveChat extends EventEmitter {
       try {
         const response = await this.youtube.liveChatMessages.list({
           liveChatId: this.liveChatId!,
-          part: ['snippet', 'authorDetails'],
-          pageToken: this.nextPageToken
+          part: ["snippet", "authorDetails"],
+          pageToken: this.nextPageToken,
         });
 
         // 新しいメッセージを処理
         const messages = response.data.items || [];
         messages.forEach((message) => {
           const comment: YouTubeComment = {
-            author: message.authorDetails?.displayName || 'Unknown',
-            message: message.snippet?.displayMessage || '',
-            timestamp: new Date(message.snippet?.publishedAt || Date.now())
+            author: message.authorDetails?.displayName || "Unknown",
+            message: message.snippet?.displayMessage || "",
+            timestamp: new Date(message.snippet?.publishedAt || Date.now()),
           };
 
-          this.emit('comment', comment);
+          this.emit("comment", comment);
         });
 
         // 次回のポーリング用トークンを保存
         this.nextPageToken = response.data.nextPageToken || undefined;
 
         // ポーリング間隔（ミリ秒）
-        const pollingInterval = response.data.pollingIntervalMillis || 5000;
+        // API指定の間隔と、自前の最小間隔(45秒)のうち、長い方を採用する
+        const apiSuggestedInterval =
+          response.data.pollingIntervalMillis || 5000;
+        const pollingInterval = Math.max(
+          apiSuggestedInterval,
+          this.MIN_POLLING_INTERVAL
+        );
+
+        console.log(`Next poll in ${pollingInterval / 1000}s`);
 
         // 次回のポーリングをスケジュール
         this.pollingInterval = setTimeout(pollMessages, pollingInterval);
       } catch (error) {
-        console.error('Error polling messages:', error);
-        // エラーが発生しても5秒後に再試行
-        this.pollingInterval = setTimeout(pollMessages, 5000);
+        console.error("Error polling messages:", error);
+        // エラーが発生しても再試行
+        this.pollingInterval = setTimeout(pollMessages, 60000);
       }
     };
 
@@ -95,8 +107,8 @@ export class YouTubeLiveChat extends EventEmitter {
       clearTimeout(this.pollingInterval);
       this.pollingInterval = null;
     }
-    this.liveChatId = null;
+    // liveChatIdは保持しておく（再開時のため）
     this.nextPageToken = undefined;
-    console.log('YouTube Live Chat stopped');
+    console.log("YouTube Live Chat stopped");
   }
 }

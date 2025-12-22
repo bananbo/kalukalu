@@ -30,6 +30,14 @@ const HUNGER_RATE = 0.015; // 空腹によるエネルギー減少率（ゆっ�
 const RED_HUNGER_RATE = 0.018; // レッド族の追加減少率（寿命20%短縮）
 const REPLENISH_COOLDOWN = 300; // 補充のクールダウン（フレーム数、約5秒）
 
+interface PointNotification {
+  id: string;
+  x: number;
+  y: number;
+  amount: number;
+  createdAt: number;
+}
+
 const EcosystemCanvas = ({
   creatures,
   onCreatureUpdate,
@@ -43,6 +51,7 @@ const EcosystemCanvas = ({
     hasWinner: boolean;
     winner: string | null;
   }>({ hasWinner: false, winner: null });
+  const [pointNotifications, setPointNotifications] = useState<PointNotification[]>([]);
   const plantsRef = useRef<Plant[]>([]);
   const obstaclesRef = useRef<Obstacle[]>([]);
   const creaturesRef = useRef<Creature[]>(creatures);
@@ -300,6 +309,22 @@ const EcosystemCanvas = ({
         // 分裂クールダウン
         const newSplitCooldown = Math.max(0, creature.splitCooldown - 1);
 
+        // 生存ポイントの計算（10秒 = 600フレーム）
+        const newSurvivalFrames = (creature.survivalFrames || 0) + 1;
+        const survivalPointsToAdd = Math.floor(newSurvivalFrames / 600) - Math.floor((creature.survivalFrames || 0) / 600);
+        const newSurvivalPoints = (creature.survivalPoints || 0) + survivalPointsToAdd;
+
+        // 生存ポイント獲得時に通知を生成
+        if (survivalPointsToAdd > 0) {
+          setPointNotifications(prev => [...prev, {
+            id: `survival-${creature.id}-${Date.now()}`,
+            x: creature.position.x,
+            y: creature.position.y,
+            amount: survivalPointsToAdd,
+            createdAt: Date.now(),
+          }]);
+        }
+
         // 移動方向角度を更新（速度から計算、急激な変化を防ぐ）
         const speed = Math.sqrt(newVelocityX ** 2 + newVelocityY ** 2);
         let newWanderAngle = creature.wanderAngle ?? 0;
@@ -322,6 +347,8 @@ const EcosystemCanvas = ({
           reproductionCooldown: newReproductionCooldown,
           splitCooldown: newSplitCooldown,
           wanderAngle: newWanderAngle,
+          survivalFrames: newSurvivalFrames,
+          survivalPoints: newSurvivalPoints,
         };
       });
 
@@ -351,6 +378,17 @@ const EcosystemCanvas = ({
                 isConsumed: true,
                 regrowthTimer: 0,
               };
+
+              // 植物ポイント獲得時に通知を生成
+              if (result.plantPointsGain > 0) {
+                setPointNotifications(prev => [...prev, {
+                  id: `plant-${creature.id}-${Date.now()}`,
+                  x: creature.position.x,
+                  y: creature.position.y,
+                  amount: result.plantPointsGain,
+                  createdAt: Date.now(),
+                }]);
+              }
             }
           }
         }
@@ -553,6 +591,10 @@ const EcosystemCanvas = ({
       const victory = checkVictory(updatedCreatures);
       setVictoryInfo(victory);
 
+      // ポイント通知のクリーンアップ（2秒後に削除）
+      const now = Date.now();
+      setPointNotifications(prev => prev.filter(n => now - n.createdAt < 2000));
+
       // 重要: 更新されたcreaturesをrefに保存（次のフレームで使用）
       creaturesRef.current = updatedCreatures;
 
@@ -673,6 +715,28 @@ const EcosystemCanvas = ({
         {creatures.map((creature) => (
           <CreatureSVG key={creature.id} creature={creature} />
         ))}
+
+        {/* ポイント獲得通知を描画 */}
+        {pointNotifications.map((notification) => {
+          const age = Date.now() - notification.createdAt;
+          const opacity = Math.max(0, 1 - age / 2000); // 2秒でフェードアウト
+          const yOffset = -(age / 20); // 上に浮き上がる
+          return (
+            <text
+              key={notification.id}
+              x={notification.x}
+              y={notification.y + yOffset}
+              fill="#4ade80"
+              fontSize="16"
+              fontWeight="bold"
+              textAnchor="middle"
+              opacity={opacity}
+              style={{ pointerEvents: 'none' }}
+            >
+              +{notification.amount}
+            </text>
+          );
+        })}
       </svg>
 
       {/* オーバーレイ情報（シンプルにまとめ） */}

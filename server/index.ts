@@ -60,6 +60,12 @@ app.post("/api/youtube/start", async (req, res) => {
     youtubeLiveChat.on("comment", async (comment) => {
       console.log("New comment:", comment);
 
+      // 「キャラ生成」というキーワードが含まれているかチェック
+      if (!comment.message.includes("キャラ生成")) {
+        console.log("Comment does not contain 'キャラ生成', skipping...");
+        return;
+      }
+
       // LLMでコメントを解析して生物を生成
       const creature = await creatureGenerator.generateFromComment(comment);
 
