@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Creature, getSpeciesType } from "./types/creature";
 import EcosystemCanvas from "./components/EcosystemCanvas";
 import Ranking from "./components/Ranking";
@@ -6,6 +6,7 @@ import CreatureStats from "./components/CreatureStats";
 import AIGeneratorPopup from "./components/AIGeneratorPopup";
 import SoundControl from "./components/SoundControl";
 import YouTubeControl from "./components/YouTubeControl";
+import GameEndRanking from "./components/GameEndRanking";
 import "./App.css";
 
 function App() {
@@ -14,6 +15,48 @@ function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isAIPopupOpen, setIsAIPopupOpen] = useState(false);
+
+  // タイマー関連のstate (2時間 = 7200秒)
+  const GAME_DURATION = 2 * 60 * 60; // 2時間
+  const [remainingTime, setRemainingTime] = useState(GAME_DURATION);
+  const [isGameEnded, setIsGameEnded] = useState(false);
+  const timerRef = useRef<number | null>(null);
+
+  // タイマーをフォーマット
+  const formatTime = useCallback((seconds: number) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return `${h}:${m.toString().padStart(2, "0")}:${s
+      .toString()
+      .padStart(2, "0")}`;
+  }, []);
+
+  // カウントダウンタイマー
+  useEffect(() => {
+    if (isGameEnded) return;
+
+    timerRef.current = window.setInterval(() => {
+      setRemainingTime((prev) => {
+        if (prev <= 1) {
+          if (timerRef.current) clearInterval(timerRef.current);
+          setIsGameEnded(true);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isGameEnded]);
+
+  // ゲームをリスタート
+  const handleRestartGame = useCallback(() => {
+    setRemainingTime(GAME_DURATION);
+    setIsGameEnded(false);
+  }, []);
 
   // 生物数が変わったらサーバーに通知
   useEffect(() => {
@@ -108,11 +151,28 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>
-          <span className="app-logo"></span> Kalukalu -
-          配信連動型シミュレーションゲーム
-        </h1>
+        <div className="header-title-row">
+          <h1>
+            <span className="app-logo"></span> Kalukalu
+          </h1>
+          <div className="header-info">
+            <span className="header-subtitle">
+              配信連動型シミュレーションゲーム
+            </span>
+            <span className="header-hint">
+              💬 コメントで「○○作って」と送るとキャラが生成されます！
+            </span>
+          </div>
+        </div>
         <div className="header-controls">
+          <div
+            className={`header-timer ${remainingTime < 300 ? "warning" : ""} ${
+              remainingTime < 60 ? "critical" : ""
+            }`}
+          >
+            <span className="icon icon-clock"></span>
+            <span className="timer-value">{formatTime(remainingTime)}</span>
+          </div>
           <button
             className="header-add-btn"
             onClick={() => setIsAIPopupOpen(!isAIPopupOpen)}
@@ -153,6 +213,9 @@ function App() {
         isOpen={isAIPopupOpen}
         onToggle={() => setIsAIPopupOpen(!isAIPopupOpen)}
       />
+
+      {/* ゲーム終了ランキング */}
+      {isGameEnded && <GameEndRanking onRestart={handleRestartGame} />}
     </div>
   );
 }

@@ -319,7 +319,7 @@ export function handleCombat(
   // レッドがグリーンを捕まえる（鬼ごっこ）
   if (c1Type === "red" && c2Type === "green") {
     // レッド(c1)がグリーン(c2)を捕まえる
-    const baseDamage = 25 + c1.attributes.strength * 2;
+    const baseDamage = 35 + c1.attributes.strength * 3;
     // 体格（size）による防御力: 高いとダメージ軽減（最大60%軽減）
     // size=10の場合、ダメージは40%に（約5回耐えられる）
     const sizeDefense = 1 - c2.attributes.size * 0.06;
@@ -359,7 +359,7 @@ export function handleCombat(
 
   if (c2Type === "red" && c1Type === "green") {
     // レッド(c2)がグリーン(c1)を捕まえる
-    const baseDamage = 25 + c2.attributes.strength * 2;
+    const baseDamage = 35 + c2.attributes.strength * 3;
     // 体格（size）による防御力: 高いとダメージ軽減（最大60%軽減）
     // size=10の場合、ダメージは40%に（約5回耐えられる）
     const sizeDefense = 1 - c1.attributes.size * 0.06;
@@ -573,12 +573,19 @@ export function split(
 ): { clone: Creature; updatedParent: Creature } {
   // 突然変異確率（15%の確率で大きな変異が起こる）
   const isMutation = Math.random() < 0.15;
-  const mutationFactor = isMutation ? 2.0 : 0.5; // 通常は±0.5、突然変異時は±2.0
 
-  // 親の属性を継承（わずかな変異または突然変異）
+  // 親の属性を継承（基本的に親より低くなる、最大95%）
+  // 突然変異時のみ少し上がる可能性がある
   const inheritAttribute = (parentValue: number) => {
-    const variation = (Math.random() - 0.5) * mutationFactor;
-    return Math.min(10, Math.max(0, parentValue + variation));
+    if (isMutation) {
+      // 突然変異: ±1.5の変動（上がることもある）
+      const variation = (Math.random() - 0.5) * 3.0;
+      return Math.min(10, Math.max(0, parentValue + variation));
+    } else {
+      // 通常: 親の85%〜95%の範囲（必ず下がる）
+      const ratio = 0.85 + Math.random() * 0.1; // 0.85〜0.95
+      return Math.max(0, parentValue * ratio);
+    }
   };
 
   const attributes = {
@@ -593,14 +600,28 @@ export function split(
   const behavior = { ...parent.behavior };
   const traits = { ...parent.traits };
 
-  // behaviorProgramの遺伝：各パラメータを個別に継承
+  // behaviorProgramの遺伝：各パラメータを個別に継承（最大95%）
   const inheritBehaviorValue = (
     parentValue: number,
     min: number = -1,
     max: number = 1
   ) => {
-    const variation = (Math.random() - 0.5) * (isMutation ? 0.3 : 0.1);
-    return Math.min(max, Math.max(min, parentValue + variation));
+    if (isMutation) {
+      // 突然変異: ±0.15の変動
+      const variation = (Math.random() - 0.5) * 0.3;
+      return Math.min(max, Math.max(min, parentValue + variation));
+    } else {
+      // 通常: 親の90%〜95%（絶対値の場合）
+      // 負の値も考慮
+      if (parentValue >= 0) {
+        const ratio = 0.9 + Math.random() * 0.05; // 0.90〜0.95
+        return Math.max(min, parentValue * ratio);
+      } else {
+        // 負の値の場合は絶対値を減少させる（0に近づく）
+        const ratio = 0.9 + Math.random() * 0.05;
+        return Math.min(max, parentValue * ratio);
+      }
+    }
   };
 
   const behaviorProgram = {

@@ -64,21 +64,19 @@ export default function Ranking({ creatures }: RankingProps) {
     loadStoredRanking()
   );
   const lastPointsRef = useRef<Record<string, number>>({});
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // ランキングリセット関数
   const handleResetRanking = () => {
-    if (
-      window.confirm("ランキングをリセットしますか？この操作は取り消せません。")
-    ) {
-      const newRanking: StoredRanking = {
-        allTime: {},
-        today: {},
-        todayDate: getTodayDate(),
-      };
-      setStoredRanking(newRanking);
-      saveStoredRanking(newRanking);
-      lastPointsRef.current = {};
-    }
+    const newRanking: StoredRanking = {
+      allTime: {},
+      today: {},
+      todayDate: getTodayDate(),
+    };
+    setStoredRanking(newRanking);
+    saveStoredRanking(newRanking);
+    lastPointsRef.current = {};
+    setShowResetConfirm(false);
   };
 
   // グリーン族のみ（ユーザー生成のみ）
@@ -202,12 +200,42 @@ export default function Ranking({ creatures }: RankingProps) {
         </h2>
         <button
           className="reset-ranking-btn"
-          onClick={handleResetRanking}
+          onClick={() => setShowResetConfirm(true)}
           title="ランキングをリセット"
         >
           <span className="icon icon-refresh"></span>
         </button>
       </div>
+
+      {/* リセット確認モーダル */}
+      {showResetConfirm && (
+        <div className="reset-confirm-overlay" onClick={() => setShowResetConfirm(false)}>
+          <div className="reset-confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="reset-confirm-header">
+              <span className="icon icon-alert"></span>
+              <h3>ランキングリセット</h3>
+            </div>
+            <div className="reset-confirm-content">
+              <p>ランキングデータをすべてリセットしますか？</p>
+              <p className="warning-text">この操作は取り消せません。</p>
+            </div>
+            <div className="reset-confirm-buttons">
+              <button
+                className="btn-cancel"
+                onClick={() => setShowResetConfirm(false)}
+              >
+                キャンセル
+              </button>
+              <button
+                className="btn-confirm"
+                onClick={handleResetRanking}
+              >
+                リセット
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 累計1位・今日1位 */}
       <div className="top-players">
