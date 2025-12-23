@@ -75,16 +75,8 @@ export function calculateIntelligentMovement(
     }
   }
 
-  // ===== 頂点捕食者（レッド系）は常に積極的に動く =====
-  if (myTier === "apex") {
-    // ランダムな探索行動（常に動き回る）
-    const wanderStrength = 0.3 + program.curiosity * 0.3;
-    if (Math.random() < 0.1) {
-      const randomAngle = Math.random() * Math.PI * 2;
-      forceX += Math.cos(randomAngle) * wanderStrength;
-      forceY += Math.sin(randomAngle) * wanderStrength;
-    }
-  }
+  // ===== 頂点捕食者（レッド系）のランダム探索は後で追加 =====
+  // （獲物が見つからない場合のみランダム移動するように後で処理）
 
   // ===== 中間捕食者（ブルー系）も探索 =====
   if (myTier === "predator") {

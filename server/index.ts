@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import { WebSocketServer } from "ws";
 import { createServer } from "http";
 import { YouTubeLiveChat } from "./services/youtubeLiveChat";
+import { YouTubeLiveDetector } from "./services/youtubeLiveDetector";
 import { CreatureGenerator } from "./services/creatureGenerator";
 import { initialSpeciesData } from "./services/initialSpecies";
 
@@ -80,6 +81,68 @@ app.post("/api/youtube/start", async (req, res) => {
     res.json({ success: true, message: "YouTube Live Chat started" });
   } catch (error) {
     console.error("Error starting YouTube Live Chat:", error);
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+// YouTube Live Chat自動開始（チャンネルIDからライブ配信を自動検出）
+app.post("/api/youtube/auto-start", async (req, res) => {
+  const { channelId } = req.body;
+
+  if (!channelId) {
+    return res.status(400).json({
+      success: false,
+      error:
+        "channelId is required. You can find it in YouTube Studio or your channel URL.",
+    });
+  }
+
+  try {
+    if (youtubeLiveChat) {
+      youtubeLiveChat.stop();
+    }
+
+    // ライブ配信を自動検出
+    const detector = new YouTubeLiveDetector(channelId);
+    const videoId = await detector.findLiveVideoId();
+
+    if (!videoId) {
+      return res.status(404).json({
+        success: false,
+        error:
+          "No live stream found on this channel. Make sure the stream is live.",
+      });
+    }
+
+    console.log(`Auto-detected live stream: ${videoId}`);
+
+    youtubeLiveChat = new YouTubeLiveChat(videoId);
+
+    // コメント受信時の処理（通常のstartと同じ）
+    youtubeLiveChat.on("comment", async (comment) => {
+      console.log("New comment:", comment);
+
+      if (!comment.message.includes("キャラ生成")) {
+        console.log("Comment does not contain 'キャラ生成', skipping...");
+        return;
+      }
+
+      const creature = await creatureGenerator.generateFromComment(comment);
+
+      broadcast({
+        type: "newCreature",
+        creature,
+      });
+    });
+
+    await youtubeLiveChat.start();
+    res.json({
+      success: true,
+      message: "YouTube Live Chat started (auto-detected)",
+      videoId: videoId,
+    });
+  } catch (error) {
+    console.error("Error auto-starting YouTube Live Chat:", error);
     res.status(500).json({ success: false, error: (error as Error).message });
   }
 });

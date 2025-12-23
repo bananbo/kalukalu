@@ -11,6 +11,9 @@ interface BehaviorProgram {
   obstacleStrategy: "avoid" | "use-as-cover" | "ignore";
   stealthAttack: number; // 背後攻撃傾向
   counterAttack: number; // 反撃傾向
+  ignoreObstacleBlockedTargets: boolean; // 障害物で遮られた目標を無視するか
+  avoidObstacleInterior: boolean; // 障害物の内部を目標にしないか
+  activeHunterAttack: number; // ハンター積極攻撃度 (0.0 ~ 1.0)
 }
 
 // AIが返すJSON形式の定義
@@ -232,7 +235,10 @@ export class CreatureGenerator {
     "obstacleAwareness": 0.0〜1.0（障害物認識度、高いと早めに回避）,
     "obstacleStrategy": "avoid" | "use-as-cover" | "ignore"（障害物戦略）,
     "stealthAttack": 0.0〜1.0（背後攻撃傾向、高いとレッド族の背後を狙う）,
-    "counterAttack": 0.0〜1.0（反撃傾向、高いと逃げずに反撃を試みる）
+    "counterAttack": 0.0〜1.0（反撃傾向、高いと逃げずに反撃を試みる）,
+    "ignoreObstacleBlockedTargets": true/false（障害物で遮られた目標を無視するか、賢い生物はtrue）,
+    "avoidObstacleInterior": true/false（障害物の内部を目標にしないか、普通はtrue）,
+    "activeHunterAttack": 0.0〜1.0（ハンター積極攻撃度、高いと回り込んで攻撃）
   },
   "vision": {
     "angle": 視野角（ラジアン、0.5〜6.28、捕食者は狭く、草食は広く）,
@@ -256,6 +262,15 @@ export class CreatureGenerator {
   - "avoid": 障害物を避けて移動（一般的）
   - "use-as-cover": 障害物を隠れ場所として活用（臆病な草食動物向け）
   - "ignore": 障害物を気にしない（突進型の捕食者向け）
+
+【障害物認識の詳細設定】
+- ignoreObstacleBlockedTargets: true＝賢い、壁の反対側のアイテムを探らない
+- avoidObstacleInterior: true＝賢い、壁の中のアイテムを目標にしない
+- 通常の生物はどちらもtrue推奨、極端に知性が低い生物のみfalse
+
+【ハンター攻撃】
+- activeHunterAttack: 高い＝積極的にレッド族を攻撃し、回り込む動きをする
+- コメントに「攻撃的」「戦闘」「ハンター」「狩る」などがあれば高く設定
 
 コメント内容から生物の性格や特徴を推測し、面白いキャラクターを生成してください。
 `;
@@ -985,6 +1000,20 @@ export class CreatureGenerator {
       counterAttack = Math.max(0, counterAttack - 0.2);
     }
 
+    // 新しいパラメータの計算
+    // 賢い生物は障害物認識が高い
+    const ignoreObstacleBlockedTargets = attributes.intelligence >= 4;
+    const avoidObstacleInterior = attributes.intelligence >= 3;
+
+    // ハンター積極攻撃度
+    let activeHunterAttack = 0.3; // デフォルト
+    if (aggressiveness > 0.6) {
+      activeHunterAttack = Math.min(1, activeHunterAttack + 0.4);
+    }
+    if (attributes.intelligence > 6) {
+      activeHunterAttack = Math.min(1, activeHunterAttack + 0.2);
+    }
+
     return {
       approachAlly: Math.max(-1, Math.min(1, approachAlly)),
       approachEnemy: Math.max(-1, Math.min(1, approachEnemy)),
@@ -996,30 +1025,36 @@ export class CreatureGenerator {
       obstacleStrategy,
       stealthAttack: Math.max(0, Math.min(1, stealthAttack)),
       counterAttack: Math.max(0, Math.min(1, counterAttack)),
+      ignoreObstacleBlockedTargets,
+      avoidObstacleInterior,
+      activeHunterAttack: Math.max(0, Math.min(1, activeHunterAttack)),
     };
   }
 
   // レッド族（鬼）を生成する
   generateRedCreature(index: number): Creature {
-    const redNames = [
-      "ハンター",
-      "ストーカー",
-      "シャドウ",
-      "プレデター",
-      "レイヴン",
-      "ダークネス",
-      "レッドアイ",
-      "ブラッドハウンド",
+    // 名前と性格のペア（それぞれ個性がある）
+    const redProfiles = [
+      { name: "ハンター", curiosity: 0.9, aggressiveness: 0.95, speed: 8 },
+      { name: "ストーカー", curiosity: 0.6, aggressiveness: 0.85, speed: 7 },
+      { name: "シャドウ", curiosity: 0.7, aggressiveness: 0.9, speed: 9 },
+      { name: "プレデター", curiosity: 0.8, aggressiveness: 1.0, speed: 8 },
+      { name: "レイヴン", curiosity: 0.75, aggressiveness: 0.88, speed: 7 },
+      { name: "ダークネス", curiosity: 0.5, aggressiveness: 0.8, speed: 8 },
+      { name: "レッドアイ", curiosity: 0.85, aggressiveness: 0.92, speed: 9 },
+      { name: "ブラッドハウンド", curiosity: 0.95, aggressiveness: 0.87, speed: 8 },
     ];
+
+    const profile = redProfiles[index % redProfiles.length];
 
     const position = {
       x: Math.random() * 800,
       y: Math.random() * 600,
     };
 
-    // レッド族の属性（大きく、強く、グリーンより10%速い）
+    // レッド族の属性（個性に応じて調整）
     const attributes = {
-      speed: 7 + Math.floor(Math.random() * 3), // 7-9（グリーンの平均6より10%程度速い）
+      speed: profile.speed, // 個性に応じた速度
       size: 5 + Math.floor(Math.random() * 3), // 5-7
       strength: 7 + Math.floor(Math.random() * 3), // 7-9
       intelligence: 5 + Math.floor(Math.random() * 3), // 5-7
@@ -1049,18 +1084,21 @@ export class CreatureGenerator {
       weaknesses: ["背後から弱い", "群れない"],
     };
 
-    // 鬼らしい行動プログラム
+    // 鬼らしい行動プログラム（個性に応じて調整）
     const behaviorProgram = {
       approachAlly: -0.3, // 同族をあまり気にしない
       approachEnemy: 0.9, // グリーンに積極的に接近
       fleeWhenWeak: 0.1, // ほとんど逃げない
-      aggressiveness: 0.9, // 非常に攻撃的
-      curiosity: 0.7, // 積極的に動き回る
+      aggressiveness: profile.aggressiveness, // 個性に応じた攻撃性
+      curiosity: profile.curiosity, // 個性に応じた好奇心
       territoriality: 0.2, // 縄張り意識は低い
       obstacleAwareness: 0.4, // 障害物認識は中程度
       obstacleStrategy: "avoid" as const, // 基本は避ける
       stealthAttack: 0.0, // 背後攻撃しない（鬼側）
       counterAttack: 0.0, // 反撃不要（常に攻撃側）
+      ignoreObstacleBlockedTargets: true, // 賢い（障害物越しの目標を無視）
+      avoidObstacleInterior: true, // 賢い（障害物内部を目標にしない）
+      activeHunterAttack: 0.0, // レッドは他のレッドを攻撃しない
     };
 
     const vision = this.generateVision("レッド族");
@@ -1070,7 +1108,7 @@ export class CreatureGenerator {
 
     return {
       id: `red-creature-${Date.now()}-${index}-${performance.now()}`,
-      name: redNames[index % redNames.length],
+      name: profile.name,
       typeId: typeId, // システムレッドの固定typeID
       attributes,
       appearance,
@@ -1111,6 +1149,18 @@ export class CreatureGenerator {
       "クローバー",
       "ミント",
       "セージ",
+      "フェンネル",
+      "バジル",
+      "タイム",
+      "ローズマリー",
+      "オレガノ",
+      "パセリ",
+      "コリアンダー",
+      "ラベンダー",
+      "カモミール",
+      "ジャスミン",
+      "ヒース",
+      "アイビー",
     ];
 
     const position = {
@@ -1168,6 +1218,9 @@ export class CreatureGenerator {
       obstacleStrategy: "use-as-cover" as const, // 隠れ場所として活用
       stealthAttack: 0.4, // 背後攻撃は中程度
       counterAttack: 0.1, // 反撃はほぼしない
+      ignoreObstacleBlockedTargets: true, // 賢い（障害物越しの目標を無視）
+      avoidObstacleInterior: true, // 賢い（障害物内部を目標にしない）
+      activeHunterAttack: 0.4, // ハンター攻撃は中程度（システムグリーン）
     };
 
     const vision = this.generateVision("グリーン族");

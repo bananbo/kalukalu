@@ -17,8 +17,14 @@ interface TypeScore {
 
 interface StoredRanking {
   // typeIDごとの累計ポイント
-  allTime: Record<string, { typeId: string; name: string; author: string; points: number }>;
-  today: Record<string, { typeId: string; name: string; author: string; points: number }>;
+  allTime: Record<
+    string,
+    { typeId: string; name: string; author: string; points: number }
+  >;
+  today: Record<
+    string,
+    { typeId: string; name: string; author: string; points: number }
+  >;
   todayDate: string;
 }
 
@@ -61,7 +67,9 @@ export default function Ranking({ creatures }: RankingProps) {
 
   // ランキングリセット関数
   const handleResetRanking = () => {
-    if (window.confirm("ランキングをリセットしますか？この操作は取り消せません。")) {
+    if (
+      window.confirm("ランキングをリセットしますか？この操作は取り消せません。")
+    ) {
       const newRanking: StoredRanking = {
         allTime: {},
         today: {},
@@ -167,7 +175,8 @@ export default function Ranking({ creatures }: RankingProps) {
   const combinedRanking = Object.entries(storedRanking.allTime)
     .filter(([typeId, data]) => {
       // システム生成のtypeIDを除外
-      const isSystemTypeId = typeId.startsWith('green-system-') || typeId.startsWith('red-system-');
+      const isSystemTypeId =
+        typeId.startsWith("green-system-") || typeId.startsWith("red-system-");
       return !isSystemTypeId;
     })
     .map(([typeId, data]) => {
@@ -187,34 +196,40 @@ export default function Ranking({ creatures }: RankingProps) {
 
   return (
     <div className="ranking-panel">
-      <h2>🏆 ランキング</h2>
+      <div className="ranking-header">
+        <h2>
+          <span className="icon icon-trophy icon-lg"></span> ランキング
+        </h2>
+        <button
+          className="reset-ranking-btn"
+          onClick={handleResetRanking}
+          title="ランキングをリセット"
+        >
+          <span className="icon icon-refresh"></span>
+        </button>
+      </div>
 
       {/* 累計1位・今日1位 */}
       <div className="top-players">
         {allTimeFirst && allTimeFirst.points > 0 && (
           <div className="top-player alltime">
-            <span className="label">👑 累計1位</span>
+            <span className="label">
+              <span className="icon icon-crown"></span> 累計1位
+            </span>
             <span className="name">{allTimeFirst.name}</span>
             <span className="pts">{allTimeFirst.points}pt</span>
           </div>
         )}
         {todayFirst && todayFirst.points > 0 && (
           <div className="top-player today">
-            <span className="label">🌟 今日1位</span>
+            <span className="label">
+              <span className="icon icon-star"></span> 今日1位
+            </span>
             <span className="name">{todayFirst.name}</span>
             <span className="pts">{todayFirst.points}pt</span>
           </div>
         )}
       </div>
-
-      {/* ランキングリセットボタン */}
-      <button
-        className="reset-ranking-btn"
-        onClick={handleResetRanking}
-        title="ランキングを完全にリセット"
-      >
-        🔄 ランキングリセット
-      </button>
 
       <div className="ranking-list">
         {combinedRanking.length === 0 ? (
@@ -231,7 +246,9 @@ export default function Ranking({ creatures }: RankingProps) {
               <div className="author-info">
                 <div className="creature-name">
                   {score.name}
-                  {score.count > 0 && <span className="count-badge">×{score.count}</span>}
+                  {score.count > 0 && (
+                    <span className="count-badge">×{score.count}</span>
+                  )}
                 </div>
                 <div className="creature-author">by {score.author}</div>
               </div>

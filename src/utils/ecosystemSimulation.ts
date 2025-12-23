@@ -189,18 +189,21 @@ export function handleCombat(
     return { c1Damage: 0, c2Damage: 0, c1EnergyGain: 0, c2EnergyGain: 0 };
   }
 
-  // グリーンがレッドを背後から攻撃する場合（グリーンの勝利）
+  // グリーンがレッドを背後から攻撃する場合（ダメージを与える）
   if (c1Type === "green" && c2Type === "red") {
     if (canAttackFromBehind(c1, c2)) {
-      // グリーン(c1)がレッド(c2)を背後から倒す
-      return { c1Damage: 0, c2Damage: 100, c1EnergyGain: 0, c2EnergyGain: 0 };
+      // グリーン(c1)がレッド(c2)を背後から攻撃
+      // 攻撃者の力と背後攻撃スキルに基づくダメージ（15-35程度）
+      const damage = 15 + c1.attributes.strength * 2 + c1.behaviorProgram.stealthAttack * 10;
+      return { c1Damage: 0, c2Damage: damage, c1EnergyGain: 0, c2EnergyGain: 0 };
     }
   }
 
   if (c2Type === "green" && c1Type === "red") {
     if (canAttackFromBehind(c2, c1)) {
-      // グリーン(c2)がレッド(c1)を背後から倒す
-      return { c1Damage: 100, c2Damage: 0, c1EnergyGain: 0, c2EnergyGain: 0 };
+      // グリーン(c2)がレッド(c1)を背後から攻撃
+      const damage = 15 + c2.attributes.strength * 2 + c2.behaviorProgram.stealthAttack * 10;
+      return { c1Damage: damage, c2Damage: 0, c1EnergyGain: 0, c2EnergyGain: 0 };
     }
   }
 
@@ -351,34 +354,49 @@ export function split(
   canvasWidth: number,
   canvasHeight: number
 ): { clone: Creature; updatedParent: Creature } {
-  // 親の属性をほぼ継承（わずかな変異）
+  // 突然変異確率（15%の確率で大きな変異が起こる）
+  const isMutation = Math.random() < 0.15;
+  const mutationFactor = isMutation ? 2.0 : 0.5; // 通常は±0.5、突然変異時は±2.0
+
+  // 親の属性を継承（わずかな変異または突然変異）
+  const inheritAttribute = (parentValue: number) => {
+    const variation = (Math.random() - 0.5) * mutationFactor;
+    return Math.min(10, Math.max(0, parentValue + variation));
+  };
+
   const attributes = {
-    speed: Math.min(
-      10,
-      Math.max(0, parent.attributes.speed + (Math.random() - 0.5) * 1)
-    ),
-    size: Math.min(
-      10,
-      Math.max(0, parent.attributes.size + (Math.random() - 0.5) * 1)
-    ),
-    strength: Math.min(
-      10,
-      Math.max(0, parent.attributes.strength + (Math.random() - 0.5) * 1)
-    ),
-    intelligence: Math.min(
-      10,
-      Math.max(0, parent.attributes.intelligence + (Math.random() - 0.5) * 1)
-    ),
-    social: Math.min(
-      10,
-      Math.max(0, parent.attributes.social + (Math.random() - 0.5) * 1)
-    ),
+    speed: inheritAttribute(parent.attributes.speed),
+    size: inheritAttribute(parent.attributes.size),
+    strength: inheritAttribute(parent.attributes.strength),
+    intelligence: inheritAttribute(parent.attributes.intelligence),
+    social: inheritAttribute(parent.attributes.social),
   };
 
   const appearance = { ...parent.appearance };
   const behavior = { ...parent.behavior };
   const traits = { ...parent.traits };
-  const behaviorProgram = { ...parent.behaviorProgram };
+
+  // behaviorProgramの遺伝：各パラメータを個別に継承
+  const inheritBehaviorValue = (parentValue: number, min: number = -1, max: number = 1) => {
+    const variation = (Math.random() - 0.5) * (isMutation ? 0.3 : 0.1);
+    return Math.min(max, Math.max(min, parentValue + variation));
+  };
+
+  const behaviorProgram = {
+    approachAlly: inheritBehaviorValue(parent.behaviorProgram.approachAlly, -1, 1),
+    approachEnemy: inheritBehaviorValue(parent.behaviorProgram.approachEnemy, -1, 1),
+    fleeWhenWeak: inheritBehaviorValue(parent.behaviorProgram.fleeWhenWeak, 0, 1),
+    aggressiveness: inheritBehaviorValue(parent.behaviorProgram.aggressiveness, 0, 1),
+    curiosity: inheritBehaviorValue(parent.behaviorProgram.curiosity, 0, 1),
+    territoriality: inheritBehaviorValue(parent.behaviorProgram.territoriality, 0, 1),
+    obstacleAwareness: inheritBehaviorValue(parent.behaviorProgram.obstacleAwareness, 0, 1),
+    obstacleStrategy: parent.behaviorProgram.obstacleStrategy,
+    stealthAttack: inheritBehaviorValue(parent.behaviorProgram.stealthAttack, 0, 1),
+    counterAttack: inheritBehaviorValue(parent.behaviorProgram.counterAttack, 0, 1),
+    ignoreObstacleBlockedTargets: parent.behaviorProgram.ignoreObstacleBlockedTargets,
+    avoidObstacleInterior: parent.behaviorProgram.avoidObstacleInterior,
+    activeHunterAttack: inheritBehaviorValue(parent.behaviorProgram.activeHunterAttack, 0, 1),
+  };
 
   const position = {
     x: Math.min(

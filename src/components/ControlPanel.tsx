@@ -6,10 +6,7 @@ interface ControlPanelProps {
   onClearAll: () => void;
 }
 
-const ControlPanel = ({
-  onStartYouTube,
-  onClearAll,
-}: ControlPanelProps) => {
+const ControlPanel = ({ onStartYouTube, onClearAll }: ControlPanelProps) => {
   const [videoId, setVideoId] = useState("");
   const [aiAuthor, setAiAuthor] = useState("");
   const [aiMessage, setAiMessage] = useState("");
@@ -121,7 +118,9 @@ const ControlPanel = ({
       </section>
 
       <section className="control-section ai-section">
-        <h3>🤖 AI生成テスト</h3>
+        <h3>
+          <span className="icon icon-robot icon-lg"></span> AI生成テスト
+        </h3>
         <div className="ai-inputs">
           <input
             type="text"

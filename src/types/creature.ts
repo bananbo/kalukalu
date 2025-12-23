@@ -9,6 +9,9 @@ export interface BehaviorProgram {
   obstacleStrategy: "avoid" | "use-as-cover" | "ignore"; // 障害物への戦略
   stealthAttack: number; // 背後攻撃傾向 (0.0 ~ 1.0) - 高いとレッドの背後を狙う
   counterAttack: number; // 反撃傾向 (0.0 ~ 1.0) - 高いと逃げずに反撃を試みる
+  ignoreObstacleBlockedTargets: boolean; // 障害物で遮られた目標を無視するか
+  avoidObstacleInterior: boolean; // 障害物の内部を目標にしないか
+  activeHunterAttack: number; // ハンター積極攻撃度 (0.0 ~ 1.0) - 高いと回り込んで攻撃
 }
 
 // 種族タイプ（鬼ごっこシステム）

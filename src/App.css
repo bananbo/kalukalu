@@ -59,7 +59,7 @@
 }
 
 .sidebar {
-  width: 280px;
+  width: 360px;
   background: rgba(15, 23, 42, 0.6);
   border-left: 1px solid #1e293b;
   display: flex;
@@ -105,4 +105,118 @@
   100% {
     transform: rotate(360deg);
   }
+}
+
+/* Cyberpunk Icon Sprite System */
+.icon {
+  display: inline-block;
+  width: 1.25em; /* Slightly larger for pixel clarity */
+  height: 1.25em;
+  background-image: url("./assets/solid_pixel_icons.png");
+  background-repeat: no-repeat;
+  background-size: 500% 500%; /* 5 cols, 5 rows */
+  vertical-align: sub; /* Better alignment for pixel art */
+  mix-blend-mode: screen; /* Make black background transparent */
+  margin-right: 0.3em;
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.5)); /* Enhance glow */
+  image-rendering: pixelated; /* Essential for pixel art */
+}
+
+/* Row 1 */
+/* Row 1 (0-4) @ y=0% */
+.icon-trophy {
+  background-position: 0% 0%;
+}
+.icon-crown {
+  background-position: 25% 0%;
+}
+.icon-star {
+  background-position: 50% 0%;
+}
+.icon-refresh {
+  background-position: 75% 0%;
+}
+.icon-creature {
+  background-position: 100% 0%;
+}
+
+/* Row 2 (5-9) @ y=25% */
+.icon-leaf {
+  background-position: 0% 25%;
+}
+.icon-red {
+  background-position: 25% 25%;
+}
+.icon-green {
+  background-position: 50% 25%;
+}
+.icon-alert {
+  background-position: 75% 25%;
+}
+.icon-robot {
+  background-position: 100% 25%;
+}
+
+/* Row 3 (10-14) @ y=50% */
+.icon-speed {
+  background-position: 0% 50%;
+}
+.icon-strength {
+  background-position: 25% 50%;
+}
+.icon-intelligence {
+  background-position: 50% 50%;
+}
+.icon-social {
+  background-position: 75% 50%;
+}
+.icon-energy {
+  background-position: 100% 50%;
+}
+
+/* Row 4 (15-19) @ y=75% */
+.icon-time {
+  background-position: 0% 75%;
+}
+.icon-shield {
+  background-position: 25% 75%;
+}
+.icon-wifi {
+  background-position: 50% 75%;
+}
+.icon-pen {
+  background-position: 75% 75%;
+}
+.icon-close {
+  background-position: 100% 75%;
+}
+
+/* Size modifiers */
+.icon-lg {
+  width: 1.5em;
+  height: 1.5em;
+}
+.icon-xl {
+  width: 2.5em;
+  height: 2.5em;
+}
+
+/* Status Styles */
+.connection-status {
+  transition: color 0.3s ease;
+}
+
+.connection-status.connected {
+  color: #4ade80;
+  text-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
+  font-weight: bold;
+}
+
+.connection-status.disconnected {
+  color: #64748b;
+}
+
+.connection-status.disconnected .icon-wifi {
+  filter: grayscale(100%) brightness(0.5);
+  opacity: 0.5;
 }

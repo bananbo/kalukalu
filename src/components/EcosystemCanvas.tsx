@@ -29,6 +29,7 @@ const MAX_PLANTS = 50;
 const HUNGER_RATE = 0.015; // 空腹によるエネルギー減少率（ゆっくり）
 const RED_HUNGER_RATE = 0.018; // レッド族の追加減少率（寿命20%短縮）
 const REPLENISH_COOLDOWN = 300; // 補充のクールダウン（フレーム数、約5秒）
+const RED_REPLENISH_INTERVAL = 36000; // レッド族補充間隔（10分 = 600秒 = 36000フレーム）
 
 interface PointNotification {
   id: string;
@@ -51,7 +52,9 @@ const EcosystemCanvas = ({
     hasWinner: boolean;
     winner: string | null;
   }>({ hasWinner: false, winner: null });
-  const [pointNotifications, setPointNotifications] = useState<PointNotification[]>([]);
+  const [pointNotifications, setPointNotifications] = useState<
+    PointNotification[]
+  >([]);
   const plantsRef = useRef<Plant[]>([]);
   const obstaclesRef = useRef<Obstacle[]>([]);
   const creaturesRef = useRef<Creature[]>(creatures);
@@ -311,18 +314,24 @@ const EcosystemCanvas = ({
 
         // 生存ポイントの計算（10秒 = 600フレーム）
         const newSurvivalFrames = (creature.survivalFrames || 0) + 1;
-        const survivalPointsToAdd = Math.floor(newSurvivalFrames / 600) - Math.floor((creature.survivalFrames || 0) / 600);
-        const newSurvivalPoints = (creature.survivalPoints || 0) + survivalPointsToAdd;
+        const survivalPointsToAdd =
+          Math.floor(newSurvivalFrames / 600) -
+          Math.floor((creature.survivalFrames || 0) / 600);
+        const newSurvivalPoints =
+          (creature.survivalPoints || 0) + survivalPointsToAdd;
 
         // 生存ポイント獲得時に通知を生成
         if (survivalPointsToAdd > 0) {
-          setPointNotifications(prev => [...prev, {
-            id: `survival-${creature.id}-${Date.now()}`,
-            x: creature.position.x,
-            y: creature.position.y,
-            amount: survivalPointsToAdd,
-            createdAt: Date.now(),
-          }]);
+          setPointNotifications((prev) => [
+            ...prev,
+            {
+              id: `survival-${creature.id}-${Date.now()}`,
+              x: creature.position.x,
+              y: creature.position.y,
+              amount: survivalPointsToAdd,
+              createdAt: Date.now(),
+            },
+          ]);
         }
 
         // 移動方向角度を更新（速度から計算、急激な変化を防ぐ）
@@ -381,13 +390,16 @@ const EcosystemCanvas = ({
 
               // 植物ポイント獲得時に通知を生成
               if (result.plantPointsGain > 0) {
-                setPointNotifications(prev => [...prev, {
-                  id: `plant-${creature.id}-${Date.now()}`,
-                  x: creature.position.x,
-                  y: creature.position.y,
-                  amount: result.plantPointsGain,
-                  createdAt: Date.now(),
-                }]);
+                setPointNotifications((prev) => [
+                  ...prev,
+                  {
+                    id: `plant-${creature.id}-${Date.now()}`,
+                    x: creature.position.x,
+                    y: creature.position.y,
+                    amount: result.plantPointsGain,
+                    createdAt: Date.now(),
+                  },
+                ]);
               }
             }
           }
@@ -530,7 +542,7 @@ const EcosystemCanvas = ({
       }
 
       // 自動補充システム（一定数を下回ったら追加）
-      const MIN_RED_COUNT = 2;
+      const MIN_RED_COUNT = 3; // レッド族の最小数を3体に変更
       const MIN_GREEN_COUNT = 3;
 
       const redCount = updatedCreatures.filter(
@@ -540,11 +552,11 @@ const EcosystemCanvas = ({
         (c) => c.species.includes("グリーン") || c.species.includes("green")
       ).length;
 
-      // レッド族の自動補充（クールダウン付き）
+      // レッド族の自動補充（10分に1回、1体だけ補充）
       if (redCount < MIN_RED_COUNT && replenishCooldownRef.current.red === 0) {
-        const needed = MIN_RED_COUNT - redCount;
-        console.log(`Replenishing ${needed} Red creatures...`);
-        replenishCooldownRef.current.red = REPLENISH_COOLDOWN;
+        const needed = 1; // 1体だけ補充
+        console.log(`Replenishing ${needed} Red creature (10min interval)...`);
+        replenishCooldownRef.current.red = RED_REPLENISH_INTERVAL; // 10分間隔
         fetch("http://localhost:3001/api/creature/generate-red", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -593,7 +605,9 @@ const EcosystemCanvas = ({
 
       // ポイント通知のクリーンアップ（2秒後に削除）
       const now = Date.now();
-      setPointNotifications(prev => prev.filter(n => now - n.createdAt < 2000));
+      setPointNotifications((prev) =>
+        prev.filter((n) => now - n.createdAt < 2000)
+      );
 
       // 重要: 更新されたcreaturesをrefに保存（次のフレームで使用）
       creaturesRef.current = updatedCreatures;
@@ -731,7 +745,7 @@ const EcosystemCanvas = ({
               fontWeight="bold"
               textAnchor="middle"
               opacity={opacity}
-              style={{ pointerEvents: 'none' }}
+              style={{ pointerEvents: "none" }}
             >
               +{notification.amount}
             </text>
@@ -743,8 +757,12 @@ const EcosystemCanvas = ({
       <div className="canvas-overlay">
         {/* コンパクトなステータスバー */}
         <div className="compact-status">
-          <span>🐾 {creatures.length}</span>
-          <span>🌱 {activePlantCount}</span>
+          <span>
+            <span className="icon icon-creature"></span> {creatures.length}
+          </span>
+          <span>
+            <span className="icon icon-leaf"></span> {activePlantCount}
+          </span>
           {Object.entries(speciesCount).map(([species, count]) => {
             const isRed = species.includes("レッド") || species.includes("red");
             return (
@@ -752,7 +770,12 @@ const EcosystemCanvas = ({
                 key={species}
                 className={isRed ? "red-count" : "green-count"}
               >
-                {isRed ? "🔴" : "🟢"} {count}
+                {isRed ? (
+                  <span className="icon icon-red"></span>
+                ) : (
+                  <span className="icon icon-green"></span>
+                )}{" "}
+                {count}
               </span>
             );
           })}
@@ -761,7 +784,9 @@ const EcosystemCanvas = ({
         {/* 外来種登場アラート */}
         {newArrival && (
           <div className="new-arrival-alert">
-            <div className="alert-icon">⚠️</div>
+            <div className="alert-icon">
+              <span className="icon icon-alert icon-xl"></span>
+            </div>
             <div className="alert-content">
               <h3>外来種が侵入！</h3>
               <p>
@@ -776,7 +801,9 @@ const EcosystemCanvas = ({
         {victoryInfo.hasWinner && (
           <div className="victory-overlay">
             <div className="victory-content">
-              <h1>🏆 勝利！ 🏆</h1>
+              <h1>
+                <span className="icon icon-trophy icon-xl"></span> 勝利！
+              </h1>
               <h2>{victoryInfo.winner} の生態系が支配しました！</h2>
               <p>全ての競争相手を打ち負かしました</p>
             </div>
