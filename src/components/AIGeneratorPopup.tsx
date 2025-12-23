@@ -129,13 +129,6 @@ export default function AIGeneratorPopup({
 
           <div className="ai-buttons">
             <button
-              onClick={handleAIPreview}
-              disabled={aiLoading}
-              className="btn btn-secondary"
-            >
-              {aiLoading ? "生成中..." : "プレビュー"}
-            </button>
-            <button
               onClick={handleAIGenerate}
               disabled={aiLoading}
               className="btn btn-primary"
@@ -149,10 +142,6 @@ export default function AIGeneratorPopup({
               <pre>{aiResult}</pre>
             </div>
           )}
-
-          <p className="help-text">
-            Gemini 2.0 Flashが自然言語からパラメータを生成します
-          </p>
         </div>
       </div>
     </>

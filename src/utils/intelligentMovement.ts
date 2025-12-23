@@ -368,11 +368,22 @@ export function calculateIntelligentMovement(
         const isTargetVulnerable =
           getSpeciesType(other.species) === "red" && other.isVulnerable;
 
+        // 勇敢さに基づいて正面から向かっていく確率を計算
+        // bravery 0.0 = 0%, 0.5 = 10%, 1.0 = 50%の確率で向かう
+        const effectiveBravery = bravery + braveryBonus;
+        const chargeChance = Math.pow(effectiveBravery, 2) * 0.5; // 0～50%
+        const shouldCharge = Math.random() < chargeChance && creature.energy > 40;
+
         if (isTargetVulnerable && creatureType === "green") {
           // 無防備なレッドには積極的に攻撃
           const attackForce = 1.2 + braveryBonus;
           forceX += dirX * attackForce;
           forceY += dirY * attackForce;
+        } else if (shouldCharge && creatureType === "green") {
+          // 勇敢さにより正面から向かっていく！
+          const chargeForce = effectiveBravery * closenessFactor * 1.0;
+          forceX += dirX * chargeForce;
+          forceY += dirY * chargeForce;
         } else if (
           canBackstab &&
           stealthAttack > 0.3 &&
@@ -404,6 +415,15 @@ export function calculateIntelligentMovement(
             adjustedFleeStrength;
           forceX -= dirX * fleeForce;
           forceY -= dirY * fleeForce;
+
+          // 弱っている場合はさらに逃げる（背後攻撃傾向が低い場合のみ）
+          // ※逃走行動を選んだ場合のみ適用
+          if (creature.energy < 50 && stealthAttack < 0.5) {
+            const panicForce =
+              ((50 - creature.energy) / 50) * closenessFactor * 0.5;
+            forceX -= dirX * panicForce;
+            forceY -= dirY * panicForce;
+          }
         }
 
         // 最も近い脅威を記録
@@ -411,14 +431,6 @@ export function calculateIntelligentMovement(
           nearestThreatDist = distance;
           nearestThreatX = dirX;
           nearestThreatY = dirY;
-        }
-
-        // 弱っている場合はさらに逃げる（背後攻撃傾向が低い場合のみ）
-        if (creature.energy < 50 && stealthAttack < 0.5) {
-          const panicForce =
-            ((50 - creature.energy) / 50) * closenessFactor * 0.5;
-          forceX -= dirX * panicForce;
-          forceY -= dirY * panicForce;
         }
       } else if (iCanEatOther) {
         // ===== 捕食行動 =====

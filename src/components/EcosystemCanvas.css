@@ -237,6 +237,88 @@
   color: #cbd5e1;
 }
 
+/* ゲームオーバー & 再開カウントダウン */
+.gameover-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.9);
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: gameoverFadeIn 0.5s ease-in-out;
+  pointer-events: auto;
+}
+
+@keyframes gameoverFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.gameover-content {
+  text-align: center;
+  animation: gameoverSlide 0.5s ease-out;
+}
+
+@keyframes gameoverSlide {
+  from {
+    transform: translateY(-30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.gameover-content h1 {
+  font-size: 2.5rem;
+  font-weight: 900;
+  color: #6ee7b7;
+  margin-bottom: 0.5rem;
+  text-shadow: 0 0 20px rgba(110, 231, 183, 0.5);
+}
+
+.gameover-content h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #94a3b8;
+  margin-bottom: 1rem;
+}
+
+.countdown-timer {
+  font-size: 6rem;
+  font-weight: 900;
+  color: #fbbf24;
+  text-shadow: 0 0 30px rgba(251, 191, 36, 0.6);
+  animation: countdownPulse 1s ease-in-out infinite;
+  line-height: 1;
+}
+
+@keyframes countdownPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.9;
+  }
+}
+
+.gameover-content p {
+  font-size: 1.25rem;
+  color: #94a3b8;
+  margin-top: 0.5rem;
+}
+
 /* 食物連鎖の凡例 */
 .food-chain-legend {
   position: absolute;
@@ -305,15 +387,9 @@
 @keyframes creatureSpawn {
   0% {
     opacity: 0;
-    transform: scale(0.3);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.2);
   }
   100% {
     opacity: 1;
-    transform: scale(1);
   }
 }
 
@@ -325,15 +401,9 @@
 @keyframes creatureDie {
   0% {
     opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.5;
-    transform: scale(1.1);
   }
   100% {
     opacity: 0;
-    transform: scale(0.2);
   }
 }
 
@@ -415,4 +485,66 @@
     opacity: 0.6;
     transform: scale(1.1);
   }
+}
+
+/* グリーンスコアボード（右下オーバーレイ） */
+.green-scoreboard {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 8px;
+  padding: 8px 12px;
+  min-width: 150px;
+  max-width: 200px;
+  max-height: 200px;
+  overflow-y: auto;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(80, 200, 80, 0.3);
+  pointer-events: none;
+}
+
+.scoreboard-header {
+  font-size: 12px;
+  font-weight: bold;
+  color: #4ade80;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(80, 200, 80, 0.3);
+  text-align: center;
+}
+
+.scoreboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.scoreboard-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.85);
+  padding: 2px 0;
+}
+
+.scoreboard-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 8px;
+}
+
+.scoreboard-count {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.6);
+  margin-left: 2px;
+}
+
+.scoreboard-score {
+  font-weight: bold;
+  color: #4ade80;
+  flex-shrink: 0;
 }

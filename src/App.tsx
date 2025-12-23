@@ -4,6 +4,7 @@ import EcosystemCanvas from "./components/EcosystemCanvas";
 import Ranking from "./components/Ranking";
 import CreatureStats from "./components/CreatureStats";
 import AIGeneratorPopup from "./components/AIGeneratorPopup";
+import SoundControl from "./components/SoundControl";
 import "./App.css";
 
 function App() {
@@ -110,13 +111,16 @@ function App() {
           <span className="app-logo"></span> Kalukalu -
           配信連動型シミュレーションゲーム
         </h1>
-        <div
-          className={`connection-status ${
-            isConnected ? "connected" : "disconnected"
-          }`}
-        >
-          <span className="icon icon-wifi"></span>
-          {isConnected ? "接続中" : "未接続"}
+        <div className="header-controls">
+          <SoundControl />
+          <div
+            className={`connection-status ${
+              isConnected ? "connected" : "disconnected"
+            }`}
+          >
+            <span className="icon icon-wifi"></span>
+            {isConnected ? "接続中" : "未接続"}
+          </div>
         </div>
       </header>
 

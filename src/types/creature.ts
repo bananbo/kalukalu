@@ -105,6 +105,27 @@ export function canAttackFromBehind(green: Creature, red: Creature): boolean {
   return Math.abs(angleDiff) >= BACK_ANGLE_THRESHOLD;
 }
 
+// 攻撃者(attacker)がターゲット(target)の背後にいるか判定（汎用）
+export function isTargetBehind(attacker: Creature, target: Creature): boolean {
+  // ターゲットの移動方向（向いている方向）
+  const targetFacingAngle = target.wanderAngle;
+
+  // ターゲットから見た攻撃者への角度
+  const dx = attacker.position.x - target.position.x;
+  const dy = attacker.position.y - target.position.y;
+  const angleFromTargetToAttacker = Math.atan2(dy, dx);
+
+  // ターゲットの正面方向との角度差を計算
+  let angleDiff = angleFromTargetToAttacker - targetFacingAngle;
+  while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+  while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+  // 攻撃者がターゲットの「背後」にいるか判定
+  // 背後 = ターゲットの正面から見て135度～225度の範囲（真後ろ±45度）
+  const BACK_ANGLE_THRESHOLD = Math.PI * 0.75; // 135度
+  return Math.abs(angleDiff) >= BACK_ANGLE_THRESHOLD;
+}
+
 // 後方互換性のため（段階的に削除）
 export function canEat(predator: Creature, prey: Creature): boolean {
   return canCatch(predator, prey);

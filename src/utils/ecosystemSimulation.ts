@@ -7,6 +7,7 @@ import {
   getDefaultVision,
   getSpeciesType,
   canAttackFromBehind,
+  isTargetBehind,
   isInFieldOfView,
 } from "../types/creature";
 
@@ -318,10 +319,17 @@ export function handleCombat(
   // レッドがグリーンを捕まえる（鬼ごっこ）
   if (c1Type === "red" && c2Type === "green") {
     // レッド(c1)がグリーン(c2)を捕まえる
-    const baseDamage = 30 + c1.attributes.strength * 3;
-    // 体格（size）による防御力: 高いとダメージ軽減（最大30%軽減）
-    const sizeDefense = 1 - c2.attributes.size * 0.03;
-    const finalDamage = Math.floor(baseDamage * sizeDefense);
+    const baseDamage = 25 + c1.attributes.strength * 2;
+    // 体格（size）による防御力: 高いとダメージ軽減（最大60%軽減）
+    // size=10の場合、ダメージは40%に（約5回耐えられる）
+    const sizeDefense = 1 - c2.attributes.size * 0.06;
+    
+    // グリーンが攻撃者（レッド）に正面から向き合っている場合はダメージ半減
+    // レッド(c1)がグリーン(c2)の背後にいるか判定
+    const isAttackedFromBehind = isTargetBehind(c1, c2); // c1(RED)がc2(GREEN)の背後にいるか
+    const facingMultiplier = isAttackedFromBehind ? 1.0 : 0.5; // 背後からならフルダメージ、正面なら半減
+    
+    const finalDamage = Math.max(5, Math.floor(baseDamage * sizeDefense * facingMultiplier));
 
     // グリーンが反撃中（isCounterAttacking）の場合、レッドにわずかなダメージ
     // 回避行動中（fleeWhenWeak が高い && !isCounterAttacking）の場合は反撃なし
@@ -348,10 +356,17 @@ export function handleCombat(
 
   if (c2Type === "red" && c1Type === "green") {
     // レッド(c2)がグリーン(c1)を捕まえる
-    const baseDamage = 30 + c2.attributes.strength * 3;
-    // 体格（size）による防御力: 高いとダメージ軽減（最大30%軽減）
-    const sizeDefense = 1 - c1.attributes.size * 0.03;
-    const finalDamage = Math.floor(baseDamage * sizeDefense);
+    const baseDamage = 25 + c2.attributes.strength * 2;
+    // 体格（size）による防御力: 高いとダメージ軽減（最大60%軽減）
+    // size=10の場合、ダメージは40%に（約5回耐えられる）
+    const sizeDefense = 1 - c1.attributes.size * 0.06;
+    
+    // グリーンが攻撃者（レッド）に正面から向き合っている場合はダメージ半減
+    // レッド(c2)がグリーン(c1)の背後にいるか判定
+    const isAttackedFromBehind = isTargetBehind(c2, c1); // c2(RED)がc1(GREEN)の背後にいるか
+    const facingMultiplier = isAttackedFromBehind ? 1.0 : 0.5; // 背後からならフルダメージ、正面なら半減
+    
+    const finalDamage = Math.max(5, Math.floor(baseDamage * sizeDefense * facingMultiplier));
 
     // グリーンが反撃中の場合
     let counterDamage = 0;
@@ -681,7 +696,23 @@ export function split(
     reproductionCooldown: 0,
     reproductionHistory: {},
     wanderAngle: Math.random() * Math.PI * 2,
-    vision: getDefaultVision(parent.species),
+    // 視野は親から継承（わずかな変異あり）
+    vision: {
+      angle: Math.min(
+        Math.PI * 2,
+        Math.max(
+          Math.PI * 0.3,
+          parent.vision.angle + (Math.random() - 0.5) * (isMutation ? 0.3 : 0.1)
+        )
+      ),
+      range: Math.min(
+        250,
+        Math.max(
+          30,
+          parent.vision.range + (Math.random() - 0.5) * (isMutation ? 30 : 10)
+        )
+      ),
+    },
     plantPoints: 0, // 分身は0ポイントからスタート
     splitCooldown: 300, // 分裂クールダウン（5秒）
     survivalPoints: 0, // 生存ポイントは0からスタート

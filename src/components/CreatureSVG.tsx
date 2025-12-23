@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Creature, Obstacle } from "../types/creature";
 
 interface CreatureSVGProps {
@@ -24,6 +25,55 @@ const CreatureSVG = ({
 }: CreatureSVGProps) => {
   const { position, appearance, attributes } = creature;
   const size = attributes.size * 2.5 + 5; // 5-30px（小さく）
+
+  // アニメーション用のスケールと不透明度
+  const [animScale, setAnimScale] = useState(isSpawning ? 0.3 : 1);
+  const [animOpacity, setAnimOpacity] = useState(isSpawning ? 0 : 1);
+
+  useEffect(() => {
+    if (isSpawning) {
+      // 登場アニメーション
+      setAnimScale(0.3);
+      setAnimOpacity(0);
+
+      // 少し遅延してからアニメーション開始
+      const timeout1 = setTimeout(() => {
+        setAnimScale(1.15);
+        setAnimOpacity(1);
+      }, 50);
+
+      const timeout2 = setTimeout(() => {
+        setAnimScale(1);
+      }, 350);
+
+      return () => {
+        clearTimeout(timeout1);
+        clearTimeout(timeout2);
+      };
+    } else if (isDying) {
+      // 消滅アニメーション
+      setAnimScale(1);
+      setAnimOpacity(1);
+
+      const timeout1 = setTimeout(() => {
+        setAnimScale(1.1);
+        setAnimOpacity(0.5);
+      }, 50);
+
+      const timeout2 = setTimeout(() => {
+        setAnimScale(0.2);
+        setAnimOpacity(0);
+      }, 250);
+
+      return () => {
+        clearTimeout(timeout1);
+        clearTimeout(timeout2);
+      };
+    } else {
+      setAnimScale(1);
+      setAnimOpacity(1);
+    }
+  }, [isSpawning, isDying]);
 
   // パターン定義
   const getPattern = () => {
@@ -557,27 +607,29 @@ const CreatureSVG = ({
     );
   };
 
-  // アニメーションクラス名を決定
-  const getAnimationClass = () => {
-    if (isSpawning) return "creature creature-spawn";
-    if (isDying) return "creature creature-die";
-    return "creature";
+  // SVG transformでスケールを適用（キャラクターの位置を中心に）
+  const getTransform = () => {
+    if (animScale === 1) return undefined;
+    // translate で原点をキャラクター位置に移動 → scale → 元に戻す
+    return `translate(${position.x}, ${
+      position.y
+    }) scale(${animScale}) translate(${-position.x}, ${-position.y})`;
   };
 
-  // アニメーション用のスタイル（transform-originをキャラクターの位置に設定）
-  const animationStyle =
-    isSpawning || isDying
-      ? {
-          transformOrigin: `${creature.position.x}px ${creature.position.y}px`,
-          transformBox: "fill-box" as const,
-        }
-      : undefined;
+  // 最終的な不透明度を計算
+  const finalOpacity = (creature.energy > 0 ? 1 : 0.3) * animOpacity;
 
   return (
     <g
-      className={getAnimationClass()}
-      opacity={creature.energy > 0 ? 1 : 0.3}
-      style={animationStyle}
+      className="creature"
+      opacity={finalOpacity}
+      transform={getTransform()}
+      style={{
+        transition:
+          isSpawning || isDying
+            ? "transform 0.3s ease-out, opacity 0.3s ease-out"
+            : undefined,
+      }}
     >
       {getPattern()}
       {renderFieldOfView()}

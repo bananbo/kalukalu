@@ -599,7 +599,7 @@ export class CreatureGenerator {
     const balancedAttributes = this.balanceAttributes(attributes);
 
     // 視野を生成（種族に基づく）
-    const vision = this.generateVision(species);
+    const vision = this.generateVision(species, balancedAttributes.intelligence);
 
     // ランダムなtypeIDを生成
     const typeId = `type-${Date.now().toString(36)}-${Math.random()
@@ -704,28 +704,49 @@ export class CreatureGenerator {
     return "omnivore";
   }
 
-  // 種族に応じた視野を生成
-  private generateVision(species: string): { angle: number; range: number } {
-    // グリーン系：全方位だが狭い（逃げるために周囲を警戒）
+  // 種族に応じた視野を生成（知性で最大値が決まる）
+  private generateVision(
+    species: string,
+    intelligence: number = 5
+  ): { angle: number; range: number } {
+    // 知性による視野の最大値係数（0-10 → 0.3-1.0）
+    // 知性10で100%、知性0で30%の最大視野
+    const intelligenceFactor = 0.3 + (intelligence / 10) * 0.7;
+
+    // グリーン系：知性が高いほど広い視野と遠い距離
     if (species === "グリーン族") {
+      // 最大360°、最大150の視野距離
+      const maxAngle = Math.PI * 2;
+      const maxRange = 150;
+      // 知性による上限 + ランダム変動（±10%）
+      const angleLimit = maxAngle * intelligenceFactor;
+      const rangeLimit = maxRange * intelligenceFactor;
       return {
-        angle: Math.PI * 2, // 360°
-        range: 50 + Math.random() * 30, // 50-80
+        angle: Math.min(
+          maxAngle,
+          angleLimit * (0.9 + Math.random() * 0.2)
+        ),
+        range: Math.max(30, rangeLimit * (0.9 + Math.random() * 0.2)),
       };
     }
 
-    // レッド系：前方のみだが遠くまで見える（鬼として追跡）
+    // レッド系：前方重視、知性が高いほど遠くまで見える
     if (species === "レッド族") {
+      // 最大180°（前方半分）、最大300の視野距離
+      const maxAngle = Math.PI; // 180°
+      const maxRange = 300;
+      const angleLimit = (Math.PI * 0.4 + maxAngle * 0.6) * intelligenceFactor;
+      const rangeLimit = maxRange * intelligenceFactor;
       return {
-        angle: Math.PI * 0.5 + Math.random() * Math.PI * 0.3, // 90°～144°
-        range: 150 + Math.random() * 80, // 150-230
+        angle: Math.max(Math.PI * 0.3, angleLimit * (0.9 + Math.random() * 0.2)),
+        range: Math.max(100, rangeLimit * (0.9 + Math.random() * 0.2)),
       };
     }
 
     // デフォルト（グリーン）
     return {
-      angle: Math.PI * 2,
-      range: 50,
+      angle: Math.PI * 2 * intelligenceFactor,
+      range: 50 * intelligenceFactor,
     };
   }
 
@@ -734,52 +755,78 @@ export class CreatureGenerator {
     author: string,
     attributes?: Creature["attributes"]
   ): string {
-    // ティー系の名前リスト（グリーン族用）
-    const teaNames = [
-      "アールグレイ",
-      "ダージリン",
-      "アッサム",
-      "セイロン",
-      "ウバ",
-      "ニルギリ",
-      "キーマン",
-      "ラプサン",
-      "カモミール",
-      "ジャスミン",
-      "ルイボス",
-      "マテ",
-      "ほうじ茶",
-      "抹茶",
-      "玉露",
-      "煎茶",
-      "烏龍茶",
-      "プーアル",
-      "鉄観音",
-      "ペパーミント",
-      "レモングラス",
-      "ハイビスカス",
-      "ローズヒップ",
-      "ベルガモット",
-      "チャイ",
-      "ミルクティー",
-      "オレンジペコ",
-      "ティーバッグ",
+    // バリエーション豊かな名前パーツ
+    const prefixes = [
+      "プチ",
+      "モフ",
+      "ピカ",
+      "コロ",
+      "ムニ",
+      "ポヨ",
+      "フワ",
+      "チビ",
+      "ヌク",
+      "モコ",
+      "プル",
+      "クリ",
+      "パチ",
+      "マル",
+      "スベ",
+      "トロ",
+      "ボイ",
+      "ニャ",
+      "ワイ",
+      "スク",
+      "モリ",
+      "サラ",
+      "ヒラ",
+      "ゾロ",
     ];
 
-    // 属性に応じた形容詞
-    const attributeAdjectives: { [key: string]: string[] } = {
-      speed: ["稲妻", "電光", "疑似", "スピード", "韋駄天"],
-      size: ["巨大", "ビッグ", "メガ", "ジャンボ", "デカ"],
-      strength: ["剛力", "パワー", "最強", "マッチョ", "親方"],
-      intelligence: ["賢者", "天才", "戦略", "知恵", "インテリ"],
-      social: ["群れ", "仲良し", "チーム", "絆", "コミュ"],
-    };
+    const suffixes = [
+      "スライム",
+      "ビーンズ",
+      "モチ",
+      "ッチ",
+      "マル",
+      "ポン",
+      "リン",
+      "ラン",
+      "ニョン",
+      "ロン",
+      "タン",
+      "ビン",
+      "モン",
+      "クン",
+      "プー",
+      "ーズ",
+      "ィー",
+      "アン",
+      "エン",
+      "ーム",
+      "ィア",
+      "エア",
+      "マル",
+      "ボー",
+    ];
 
-    // メッセージと作者名からハッシュを生成してランダムに選択
-    const hash = this.simpleHash(message + author);
-    const baseName = teaNames[hash % teaNames.length];
+    // メッセージと作者名からハッシュを生成
+    const hash1 = this.simpleHash(message + author);
+    const hash2 = this.simpleHash(author + message + "suffix");
+
+    const prefix = prefixes[hash1 % prefixes.length];
+    const suffix = suffixes[hash2 % suffixes.length];
+    const baseName = prefix + suffix;
 
     // 属性があれば最も高い属性の形容詞を追加
+    const attributeAdjectives: { [key: string]: string[] } = {
+      speed: ["稲妻", "電光", "スピード", "韋駄天"],
+      size: ["巨大", "ビッグ", "メガ", "デカ"],
+      strength: ["剛力", "パワー", "最強", "親方"],
+      intelligence: ["賢者", "天才", "戦略", "インテリ"],
+      social: ["群れ", "仲良し", "チーム", "絆"],
+    };
+
     if (attributes) {
       const attrEntries = Object.entries(attributes) as [string, number][];
       const maxAttr = attrEntries.reduce((max, curr) =>
@@ -1376,7 +1423,7 @@ export class CreatureGenerator {
       bravery: 0.0, // 勇敢さ不要（鬼側）
     };
 
-    const vision = this.generateVision("レッド族");
+    const vision = this.generateVision("レッド族", attributes.intelligence);
 
     // システム生成のレッドは固定typeID
     const typeId = `red-system-${index}`;
@@ -1509,7 +1556,7 @@ export class CreatureGenerator {
       bravery: 0.2, // あまり勇敢ではない
     };
 
-    const vision = this.generateVision("グリーン族");
+    const vision = this.generateVision("グリーン族", attributes.intelligence);
 
     // システム生成のグリーンは固定typeID
     const typeId = `green-system-${index}`;

@@ -25,6 +25,7 @@ import {
   findSafeSpawnPosition,
 } from "../utils/ecosystemSimulation";
 import { calculateIntelligentMovement } from "../utils/intelligentMovement";
+import SoundManager from "../utils/SoundManager";
 import "./EcosystemCanvas.css";
 
 interface EcosystemCanvasProps {
@@ -86,6 +87,11 @@ const EcosystemCanvas = ({
     green: 0,
   });
   const frameCountRef = useRef<number>(0);
+  const soundManager = useRef(SoundManager.getInstance());
+  
+  // ゲーム再開用の状態
+  const [gameOverCountdown, setGameOverCountdown] = useState<number | null>(null);
+  const restartTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // 行動状態を判定する関数
   const getBehaviorState = (
@@ -607,6 +613,9 @@ const EcosystemCanvas = ({
                 regrowthTimer: 0,
               };
 
+              // 食事音を再生
+              soundManager.current.play("eat", 0.6);
+
               // 植物ポイント獲得時に通知を生成
               if (result.plantPointsGain > 0) {
                 setPointNotifications((prev) => [
@@ -670,6 +679,9 @@ const EcosystemCanvas = ({
             if (canReproduce(c1, c2)) {
               const baby = reproduce(c1, c2, canvasWidth, canvasHeight);
               newBabies.push(baby);
+
+              // 繁殖音を再生
+              soundManager.current.play("spawn", 0.5);
 
               // 繁殖履歴を更新
               const c1History = { ...c1.reproductionHistory };
@@ -735,6 +747,25 @@ const EcosystemCanvas = ({
                 c1WasAttacked,
                 c2WasAttacked,
               } = handleCombat(c1WithState, c2WithState);
+
+              // 攻撃音を再生
+              if (c1AttackPoints > 0) {
+                // c1がバックスタブ成功
+                soundManager.current.play("backstab", 0.8);
+                if (c1AttackPoints >= 30) {
+                  // ポイント獲得音
+                  soundManager.current.play("point", 0.5);
+                }
+              } else if (c2AttackPoints > 0) {
+                // c2がバックスタブ成功
+                soundManager.current.play("backstab", 0.8);
+                if (c2AttackPoints >= 30) {
+                  soundManager.current.play("point", 0.5);
+                }
+              } else if (c1Damage > 0 || c2Damage > 0) {
+                // 通常攻撃
+                soundManager.current.play("attack", 0.5);
+              }
 
               const currentFrame = frameCountRef.current;
 
@@ -814,28 +845,81 @@ const EcosystemCanvas = ({
               };
 
               // 衝突で少し離す（攻撃を受けた側のみ押し戻す、攻撃者は追跡を継続）
+              // ただし、体格が良いグリーンは攻撃者（レッド）を強くはじき返す
               const dx = c2.position.x - c1.position.x;
               const dy = c2.position.y - c1.position.y;
               const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-              const pushForce = 2;
+              const basePushForce = 2;
 
               // c1が攻撃を受けた場合のみc1を押し戻す（攻撃者c2は追跡継続）
               if (c1WasAttacked && c1Damage > 0) {
+                // グリーン(c1)がレッド(c2)から攻撃を受けた場合
+                // 体格が良いグリーンはレッドをはじき返す
+                const c1Type = getSpeciesType(c1.species);
+                const c2Type = getSpeciesType(c2.species);
+
+                if (c1Type === "green" && c2Type === "red") {
+                  // グリーンの体格に応じてレッドをはじく（size 1-10 → force 3-15）
+                  const knockbackForce = 3 + c1.attributes.size * 1.2;
+                  updatedCreatures[j] = {
+                    ...updatedCreatures[j],
+                    velocity: {
+                      x:
+                        updatedCreatures[j].velocity.x +
+                        (dx / dist) * knockbackForce,
+                      y:
+                        updatedCreatures[j].velocity.y +
+                        (dy / dist) * knockbackForce,
+                    },
+                  };
+                }
+
+                // 攻撃を受けた側も少し押し戻される
                 updatedCreatures[i] = {
                   ...updatedCreatures[i],
                   velocity: {
-                    x: updatedCreatures[i].velocity.x - (dx / dist) * pushForce,
-                    y: updatedCreatures[i].velocity.y - (dy / dist) * pushForce,
+                    x:
+                      updatedCreatures[i].velocity.x -
+                      (dx / dist) * basePushForce,
+                    y:
+                      updatedCreatures[i].velocity.y -
+                      (dy / dist) * basePushForce,
                   },
                 };
               }
               // c2が攻撃を受けた場合のみc2を押し戻す（攻撃者c1は追跡継続）
               if (c2WasAttacked && c2Damage > 0) {
+                // グリーン(c2)がレッド(c1)から攻撃を受けた場合
+                // 体格が良いグリーンはレッドをはじき返す
+                const c1Type = getSpeciesType(c1.species);
+                const c2Type = getSpeciesType(c2.species);
+
+                if (c2Type === "green" && c1Type === "red") {
+                  // グリーンの体格に応じてレッドをはじく（size 1-10 → force 3-15）
+                  const knockbackForce = 3 + c2.attributes.size * 1.2;
+                  updatedCreatures[i] = {
+                    ...updatedCreatures[i],
+                    velocity: {
+                      x:
+                        updatedCreatures[i].velocity.x -
+                        (dx / dist) * knockbackForce,
+                      y:
+                        updatedCreatures[i].velocity.y -
+                        (dy / dist) * knockbackForce,
+                    },
+                  };
+                }
+
+                // 攻撃を受けた側も少し押し戻される
                 updatedCreatures[j] = {
                   ...updatedCreatures[j],
                   velocity: {
-                    x: updatedCreatures[j].velocity.x + (dx / dist) * pushForce,
-                    y: updatedCreatures[j].velocity.y + (dy / dist) * pushForce,
+                    x:
+                      updatedCreatures[j].velocity.x +
+                      (dx / dist) * basePushForce,
+                    y:
+                      updatedCreatures[j].velocity.y +
+                      (dy / dist) * basePushForce,
                   },
                 };
               }
@@ -847,6 +931,9 @@ const EcosystemCanvas = ({
       // エネルギーが0の生物を消滅アニメーション付きで除去
       const deadCreatures = updatedCreatures.filter((c) => c.energy <= 0);
       if (deadCreatures.length > 0) {
+        // 死亡音を再生
+        soundManager.current.play("death", 0.7);
+
         // 消滅アニメーション用に追加
         const newDying = deadCreatures.map((c) => ({
           creature: c,
@@ -874,6 +961,9 @@ const EcosystemCanvas = ({
 
           // 親を更新（ポイント消費、エネルギー消費、クールダウン）
           updatedCreatures[i] = result.updatedParent;
+
+          // 分裂時にスポーン音を再生
+          soundManager.current.play("spawn", 0.6);
         }
       }
 
@@ -1005,6 +1095,52 @@ const EcosystemCanvas = ({
       // 勝利判定
       const victory = checkVictory(updatedCreatures);
       setVictoryInfo(victory);
+
+      // 絶滅チェック（グリーンが0になったら1分後に再開）
+      if (greenCount === 0 && !restartTimerRef.current) {
+        console.log("All Green creatures extinct! Restarting in 60 seconds...");
+        setGameOverCountdown(60);
+        
+        // カウントダウン開始
+        let countdown = 60;
+        const countdownInterval = setInterval(() => {
+          countdown--;
+          setGameOverCountdown(countdown);
+          if (countdown <= 0) {
+            clearInterval(countdownInterval);
+          }
+        }, 1000);
+        
+        // 1分後に再開
+        restartTimerRef.current = setTimeout(() => {
+          console.log("Restarting game...");
+          clearInterval(countdownInterval);
+          setGameOverCountdown(null);
+          restartTimerRef.current = null;
+          
+          // 新しいゲームを開始（グリーンとレッドを生成）
+          Promise.all([
+            fetch("http://localhost:3001/api/creature/generate-green", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ count: 3 }),
+            }),
+            fetch("http://localhost:3001/api/creature/generate-red", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ count: 1 }),
+            }),
+          ])
+            .then(() => console.log("New game started!"))
+            .catch((err) => console.error("Failed to restart game:", err));
+        }, 60000);
+      } else if (greenCount > 0 && restartTimerRef.current) {
+        // グリーンが復活したらタイマーをキャンセル
+        console.log("Green creatures recovered! Cancelling restart...");
+        clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = null;
+        setGameOverCountdown(null);
+      }
 
       // ポイント通知のクリーンアップ（2秒後に削除）
       const now = Date.now();
@@ -1222,6 +1358,63 @@ const EcosystemCanvas = ({
         {renderRedNest()}
       </svg>
 
+      {/* グリーンスコアボード（右下オーバーレイ） */}
+      <div className="green-scoreboard">
+        <div className="scoreboard-header">グリーン スコア</div>
+        <div className="scoreboard-list">
+          {(() => {
+            // 分身を含むグリーンを元の名前でグループ化
+            const greenCreatures = creatures.filter(
+              (c) => getSpeciesType(c.species) === "green"
+            );
+            const grouped = new Map<
+              string,
+              { baseName: string; totalScore: number; count: number; typeId: string }
+            >();
+
+            greenCreatures.forEach((c) => {
+              // 「分身」を除去してベース名を取得
+              const baseName = c.name.replace(/分身+$/, "");
+              const score = (c.survivalPoints || 0) + (c.plantPoints || 0);
+
+              if (grouped.has(baseName)) {
+                const existing = grouped.get(baseName)!;
+                existing.totalScore += score;
+                existing.count += 1;
+              } else {
+                grouped.set(baseName, {
+                  baseName,
+                  totalScore: score,
+                  count: 1,
+                  typeId: c.typeId,
+                });
+              }
+            });
+
+            // スコアで降順ソートして表示
+            return Array.from(grouped.values())
+              .sort((a, b) => b.totalScore - a.totalScore)
+              .map((g) => {
+                const displayName =
+                  g.baseName.length > 6
+                    ? g.baseName.substring(0, 6) + "…"
+                    : g.baseName;
+                return (
+                  <div key={g.baseName} className="scoreboard-item">
+                    <span className="scoreboard-name" title={g.typeId}>
+                      {displayName}
+                      {g.count > 1 && (
+                        <span className="scoreboard-count">×{g.count}</span>
+                      )}
+                    </span>
+                    <span className="scoreboard-score">{g.totalScore}pt</span>
+                  </div>
+                );
+              });
+          })()}
+        </div>
+      </div>
+
       {/* オーバーレイ情報（シンプルにまとめ） */}
       <div className="canvas-overlay">
         {/* コンパクトなステータスバー */}
@@ -1275,6 +1468,18 @@ const EcosystemCanvas = ({
               </h1>
               <h2>{victoryInfo.winner} の生態系が支配しました！</h2>
               <p>全ての競争相手を打ち負かしました</p>
+            </div>
+          </div>
+        )}
+
+        {/* ゲームオーバー & 再開カウントダウン */}
+        {gameOverCountdown !== null && (
+          <div className="gameover-overlay">
+            <div className="gameover-content">
+              <h1>🌿 グリーン絶滅 🌿</h1>
+              <h2>新しいゲームまで</h2>
+              <div className="countdown-timer">{gameOverCountdown}</div>
+              <p>秒</p>
             </div>
           </div>
         )}
