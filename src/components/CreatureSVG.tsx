@@ -1,4 +1,4 @@
-import { Creature } from "../types/creature";
+import { Creature, Obstacle } from "../types/creature";
 
 interface CreatureSVGProps {
   creature: Creature;
@@ -12,6 +12,7 @@ interface CreatureSVGProps {
     | "idle";
   isSpawning?: boolean; // 登場アニメーション中
   isDying?: boolean; // 消滅アニメーション中
+  obstacles?: Obstacle[]; // 障害物（視野遮蔽表示用）
 }
 
 const CreatureSVG = ({
@@ -19,6 +20,7 @@ const CreatureSVG = ({
   behaviorState = "idle",
   isSpawning = false,
   isDying = false,
+  obstacles = [],
 }: CreatureSVGProps) => {
   const { position, appearance, attributes } = creature;
   const size = attributes.size * 2.5 + 5; // 5-30px（小さく）
@@ -238,6 +240,96 @@ const CreatureSVG = ({
     );
   };
 
+  // レイと矩形の交点を計算（最も近い交点を返す）
+  const rayRectIntersection = (
+    rayX: number,
+    rayY: number,
+    rayDirX: number,
+    rayDirY: number,
+    rectX: number,
+    rectY: number,
+    rectW: number,
+    rectH: number
+  ): number | null => {
+    const left = rectX;
+    const right = rectX + rectW;
+    const top = rectY;
+    const bottom = rectY + rectH;
+
+    let tMin = Infinity;
+    let found = false;
+
+    // 各辺との交差をチェック
+    if (rayDirX !== 0) {
+      // 左辺
+      const t1 = (left - rayX) / rayDirX;
+      if (t1 > 0) {
+        const y = rayY + t1 * rayDirY;
+        if (y >= top && y <= bottom && t1 < tMin) {
+          tMin = t1;
+          found = true;
+        }
+      }
+      // 右辺
+      const t2 = (right - rayX) / rayDirX;
+      if (t2 > 0) {
+        const y = rayY + t2 * rayDirY;
+        if (y >= top && y <= bottom && t2 < tMin) {
+          tMin = t2;
+          found = true;
+        }
+      }
+    }
+    if (rayDirY !== 0) {
+      // 上辺
+      const t3 = (top - rayY) / rayDirY;
+      if (t3 > 0) {
+        const x = rayX + t3 * rayDirX;
+        if (x >= left && x <= right && t3 < tMin) {
+          tMin = t3;
+          found = true;
+        }
+      }
+      // 下辺
+      const t4 = (bottom - rayY) / rayDirY;
+      if (t4 > 0) {
+        const x = rayX + t4 * rayDirX;
+        if (x >= left && x <= right && t4 < tMin) {
+          tMin = t4;
+          found = true;
+        }
+      }
+    }
+
+    return found ? tMin : null;
+  };
+
+  // 指定角度のレイが障害物に当たる距離を計算
+  const castRay = (angle: number, maxDist: number): number => {
+    const dirX = Math.cos(angle);
+    const dirY = Math.sin(angle);
+
+    let minDist = maxDist;
+
+    for (const obstacle of obstacles) {
+      const t = rayRectIntersection(
+        position.x,
+        position.y,
+        dirX,
+        dirY,
+        obstacle.position.x,
+        obstacle.position.y,
+        obstacle.width,
+        obstacle.height
+      );
+      if (t !== null && t < minDist) {
+        minDist = t;
+      }
+    }
+
+    return minDist;
+  };
+
   // 視野を描画
   const renderFieldOfView = () => {
     if (!creature.vision) return null;
@@ -252,44 +344,72 @@ const CreatureSVG = ({
         : "green";
     const baseColor = speciesType === "red" ? "255, 80, 80" : "80, 200, 80";
 
-    // 360度視野の場合は円を描画
-    if (angle >= Math.PI * 2) {
+    // 障害物がない場合は従来の描画
+    if (obstacles.length === 0) {
+      // 360度視野の場合は円を描画
+      if (angle >= Math.PI * 2) {
+        return (
+          <circle
+            cx={position.x}
+            cy={position.y}
+            r={range}
+            fill={`rgba(${baseColor}, 0.08)`}
+            stroke={`rgba(${baseColor}, 0.2)`}
+            strokeWidth={1}
+            strokeDasharray="4 2"
+          />
+        );
+      }
+
+      // 扇形の視野を描画
+      const startAngle = facingAngle - angle / 2;
+      const endAngle = facingAngle + angle / 2;
+
+      const startX = position.x + range * Math.cos(startAngle);
+      const startY = position.y + range * Math.sin(startAngle);
+      const endX = position.x + range * Math.cos(endAngle);
+      const endY = position.y + range * Math.sin(endAngle);
+
+      const largeArcFlag = angle > Math.PI ? 1 : 0;
+
+      const path = `
+        M ${position.x} ${position.y}
+        L ${startX} ${startY}
+        A ${range} ${range} 0 ${largeArcFlag} 1 ${endX} ${endY}
+        Z
+      `;
+
       return (
-        <circle
-          cx={position.x}
-          cy={position.y}
-          r={range}
+        <path
+          d={path}
           fill={`rgba(${baseColor}, 0.08)`}
-          stroke={`rgba(${baseColor}, 0.2)`}
+          stroke={`rgba(${baseColor}, 0.25)`}
           strokeWidth={1}
           strokeDasharray="4 2"
         />
       );
     }
 
-    // 扇形の視野を描画
-    const startAngle = facingAngle - angle / 2;
-    const endAngle = facingAngle + angle / 2;
+    // 障害物がある場合：レイキャスティングで視野ポリゴンを生成
+    const rayCount = 36; // レイの数（多いほど滑らか）
+    const startAngle = angle >= Math.PI * 2 ? 0 : facingAngle - angle / 2;
+    const endAngle =
+      angle >= Math.PI * 2 ? Math.PI * 2 : facingAngle + angle / 2;
+    const angleStep = (endAngle - startAngle) / rayCount;
 
-    // 扇形のパスを計算
-    const startX = position.x + range * Math.cos(startAngle);
-    const startY = position.y + range * Math.sin(startAngle);
-    const endX = position.x + range * Math.cos(endAngle);
-    const endY = position.y + range * Math.sin(endAngle);
+    const points: string[] = [`${position.x},${position.y}`];
 
-    // 大きな円弧か小さな円弧かを判定
-    const largeArcFlag = angle > Math.PI ? 1 : 0;
-
-    const path = `
-      M ${position.x} ${position.y}
-      L ${startX} ${startY}
-      A ${range} ${range} 0 ${largeArcFlag} 1 ${endX} ${endY}
-      Z
-    `;
+    for (let i = 0; i <= rayCount; i++) {
+      const rayAngle = startAngle + i * angleStep;
+      const dist = castRay(rayAngle, range);
+      const px = position.x + dist * Math.cos(rayAngle);
+      const py = position.y + dist * Math.sin(rayAngle);
+      points.push(`${px},${py}`);
+    }
 
     return (
-      <path
-        d={path}
+      <polygon
+        points={points.join(" ")}
         fill={`rgba(${baseColor}, 0.08)`}
         stroke={`rgba(${baseColor}, 0.25)`}
         strokeWidth={1}
@@ -444,8 +564,21 @@ const CreatureSVG = ({
     return "creature";
   };
 
+  // アニメーション用のスタイル（transform-originをキャラクターの位置に設定）
+  const animationStyle =
+    isSpawning || isDying
+      ? {
+          transformOrigin: `${creature.position.x}px ${creature.position.y}px`,
+          transformBox: "fill-box" as const,
+        }
+      : undefined;
+
   return (
-    <g className={getAnimationClass()} opacity={creature.energy > 0 ? 1 : 0.3}>
+    <g
+      className={getAnimationClass()}
+      opacity={creature.energy > 0 ? 1 : 0.3}
+      style={animationStyle}
+    >
       {getPattern()}
       {renderFieldOfView()}
       {renderWings()}

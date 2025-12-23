@@ -107,7 +107,8 @@ function App() {
     <div className="app">
       <header className="app-header">
         <h1>
-          <span className="app-logo"></span> Kalukalu - 生態系シミュレーション
+          <span className="app-logo"></span> Kalukalu -
+          配信連動型シミュレーションゲーム
         </h1>
         <div
           className={`connection-status ${

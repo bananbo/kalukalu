@@ -224,8 +224,15 @@ export function calculateIntelligentMovement(
     const activePlants = plants.filter((p) => !p.isConsumed);
 
     for (const plant of activePlants) {
-      // 視野内チェック
-      if (!isInFieldOfView(creature, plant.position.x, plant.position.y)) {
+      // 視野内チェック（障害物による遮蔽も考慮）
+      if (
+        !isInFieldOfView(
+          creature,
+          plant.position.x,
+          plant.position.y,
+          obstacles
+        )
+      ) {
         continue;
       }
 
@@ -277,10 +284,10 @@ export function calculateIntelligentMovement(
       (creature.attributes.size + other.attributes.size) * 3;
     const isInProximity = distance < collisionDistance;
 
-    // 視野内チェック（ただし至近距離は例外）
+    // 視野内チェック（ただし至近距離は例外、障害物による遮蔽も考慮）
     if (
       !isInProximity &&
-      !isInFieldOfView(creature, other.position.x, other.position.y)
+      !isInFieldOfView(creature, other.position.x, other.position.y, obstacles)
     ) {
       continue;
     }

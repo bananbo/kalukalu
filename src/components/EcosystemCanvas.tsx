@@ -133,11 +133,16 @@ const EcosystemCanvas = ({
 
     // グリーン族の場合
     if (speciesType === "green") {
-      // 自分の視野内にレッドがいれば逃走中
+      // 自分の視野内にレッドがいれば逃走中（障害物による遮蔽を考慮）
       const nearbyRed = allCreatures.find((c) => {
         if (getSpeciesType(c.species) !== "red") return false;
         // 自分の視野内にレッドがいるかチェック
-        return isInFieldOfView(creature, c.position.x, c.position.y);
+        return isInFieldOfView(
+          creature,
+          c.position.x,
+          c.position.y,
+          obstaclesRef.current
+        );
       });
       if (nearbyRed) {
         return "fleeing";
@@ -408,7 +413,12 @@ const EcosystemCanvas = ({
           if (getSpeciesType(creature.species) === "green") {
             const nearbyRed = currentCreatures.find((c) => {
               if (getSpeciesType(c.species) !== "red") return false;
-              return isInFieldOfView(creature, c.position.x, c.position.y);
+              return isInFieldOfView(
+                creature,
+                c.position.x,
+                c.position.y,
+                obstaclesRef.current
+              );
             });
             if (nearbyRed) {
               // 視野内にレッドがいたら追跡位置を更新し、追跡期限を延長
@@ -1171,6 +1181,7 @@ const EcosystemCanvas = ({
               creature={creature}
               behaviorState={behaviorState}
               isSpawning={isSpawning}
+              obstacles={obstacles}
             />
           );
         })}
@@ -1181,6 +1192,7 @@ const EcosystemCanvas = ({
             key={`dying-${dying.creature.id}`}
             creature={dying.creature}
             isDying={true}
+            obstacles={obstacles}
           />
         ))}
 

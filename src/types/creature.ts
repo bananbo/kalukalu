@@ -119,11 +119,107 @@ export function shouldFleeFrom(creature: Creature, other: Creature): boolean {
   return creatureType === "green" && otherType === "red";
 }
 
-// 視野内に対象がいるか判定
+// 線分と矩形の交差判定（視界遮断チェック用）
+function lineIntersectsRect(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  rectX: number,
+  rectY: number,
+  rectW: number,
+  rectH: number
+): boolean {
+  // 線分と矩形の4辺との交差をチェック
+  const left = rectX;
+  const right = rectX + rectW;
+  const top = rectY;
+  const bottom = rectY + rectH;
+
+  // 線分が完全に矩形の外側にある場合
+  if (
+    (x1 < left && x2 < left) ||
+    (x1 > right && x2 > right) ||
+    (y1 < top && y2 < top) ||
+    (y1 > bottom && y2 > bottom)
+  ) {
+    return false;
+  }
+
+  // 線分の方向ベクトル
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+
+  // 各辺との交差をチェック
+  // 左辺
+  if (dx !== 0) {
+    const t = (left - x1) / dx;
+    if (t >= 0 && t <= 1) {
+      const y = y1 + t * dy;
+      if (y >= top && y <= bottom) return true;
+    }
+  }
+  // 右辺
+  if (dx !== 0) {
+    const t = (right - x1) / dx;
+    if (t >= 0 && t <= 1) {
+      const y = y1 + t * dy;
+      if (y >= top && y <= bottom) return true;
+    }
+  }
+  // 上辺
+  if (dy !== 0) {
+    const t = (top - y1) / dy;
+    if (t >= 0 && t <= 1) {
+      const x = x1 + t * dx;
+      if (x >= left && x <= right) return true;
+    }
+  }
+  // 下辺
+  if (dy !== 0) {
+    const t = (bottom - y1) / dy;
+    if (t >= 0 && t <= 1) {
+      const x = x1 + t * dx;
+      if (x >= left && x <= right) return true;
+    }
+  }
+
+  return false;
+}
+
+// 視界が障害物で遮られているかチェック
+export function isBlockedByObstacle(
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  obstacles: Obstacle[]
+): boolean {
+  for (const obstacle of obstacles) {
+    if (
+      lineIntersectsRect(
+        fromX,
+        fromY,
+        toX,
+        toY,
+        obstacle.position.x,
+        obstacle.position.y,
+        obstacle.width,
+        obstacle.height
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// 視野内に対象がいるか判定（障害物による遮蔽も考慮可能）
 export function isInFieldOfView(
   creature: Creature,
   targetX: number,
-  targetY: number
+  targetY: number,
+  obstacles?: Obstacle[]
 ): boolean {
   const dx = targetX - creature.position.x;
   const dy = targetY - creature.position.y;
@@ -134,8 +230,22 @@ export function isInFieldOfView(
     return false;
   }
 
-  // 全方位視野（360度）の場合は常にtrue
+  // 全方位視野（360度）の場合でも障害物チェックは必要
   if (creature.vision.angle >= Math.PI * 2) {
+    // 障害物による遮蔽チェック（障害物が渡された場合のみ）
+    if (obstacles && obstacles.length > 0) {
+      if (
+        isBlockedByObstacle(
+          creature.position.x,
+          creature.position.y,
+          targetX,
+          targetY,
+          obstacles
+        )
+      ) {
+        return false;
+      }
+    }
     return true;
   }
 
@@ -151,7 +261,27 @@ export function isInFieldOfView(
   while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
 
   // 視野角の半分以内かチェック
-  return Math.abs(angleDiff) <= creature.vision.angle / 2;
+  const inAngle = Math.abs(angleDiff) <= creature.vision.angle / 2;
+  if (!inAngle) {
+    return false;
+  }
+
+  // 障害物による遮蔽チェック（障害物が渡された場合のみ）
+  if (obstacles && obstacles.length > 0) {
+    if (
+      isBlockedByObstacle(
+        creature.position.x,
+        creature.position.y,
+        targetX,
+        targetY,
+        obstacles
+      )
+    ) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 // 種族に応じたデフォルト視野を取得
