@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { Creature, Plant, Obstacle, getFoodChainTier } from "../types/creature";
+import {
+  Creature,
+  Plant,
+  Obstacle,
+  getFoodChainTier,
+  getSpeciesType,
+} from "../types/creature";
 import CreatureSVG from "./CreatureSVG";
 import {
   checkCollision,
@@ -15,6 +21,7 @@ import {
   split,
   createRandomObstacles,
   checkObstacleCollision,
+  findSafeSpawnPosition,
 } from "../utils/ecosystemSimulation";
 import { calculateIntelligentMovement } from "../utils/intelligentMovement";
 import "./EcosystemCanvas.css";
@@ -27,7 +34,6 @@ interface EcosystemCanvasProps {
 const INITIAL_PLANT_COUNT = 30;
 const MAX_PLANTS = 50;
 const HUNGER_RATE = 0.015; // 空腹によるエネルギー減少率（ゆっくり）
-const RED_HUNGER_RATE = 0.018; // レッド族の追加減少率（寿命20%短縮）
 const REPLENISH_COOLDOWN = 300; // 補充のクールダウン（フレーム数、約5秒）
 const RED_REPLENISH_INTERVAL = 36000; // レッド族補充間隔（10分 = 600秒 = 36000フレーム）
 
@@ -72,7 +78,7 @@ const EcosystemCanvas = ({
     const externalIds = new Set(creatures.map((c) => c.id));
 
     // 新しい生物（refにないが外部から渡された）
-    const newCreatures = creatures.filter((c) => !currentIds.has(c.id));
+    let newCreatures = creatures.filter((c) => !currentIds.has(c.id));
 
     // 削除された生物（refにあるが外部から渡されない）を除外したリスト
     const survivingCreatures = creaturesRef.current.filter((c) =>
@@ -80,10 +86,44 @@ const EcosystemCanvas = ({
     );
 
     if (newCreatures.length > 0) {
-      // 新しい生物を追加
+      // キャンバスサイズを取得
+      const canvasWidth = canvasRef.current?.clientWidth || 800;
+      const canvasHeight = canvasRef.current?.clientHeight || 600;
+
+      // 新しい生物に安全な位置を設定（グリーン系と外来種）
+      newCreatures = newCreatures.map((creature) => {
+        const speciesType = getSpeciesType(creature.species);
+
+        // 外来種（isNewArrival）は画面下中央から登場
+        if (creature.isNewArrival) {
+          return {
+            ...creature,
+            position: {
+              x: canvasWidth / 2, // 画面中央
+              y: canvasHeight - 50, // 画面下端から50px上
+            },
+          };
+        }
+
+        // グリーン系は安全な位置にスポーン
+        if (speciesType === "green") {
+          const safePosition = findSafeSpawnPosition(
+            [...survivingCreatures, ...creaturesRef.current],
+            canvasWidth,
+            canvasHeight,
+            "green"
+          );
+          return {
+            ...creature,
+            position: safePosition,
+          };
+        }
+        return creature;
+      });
+
       creaturesRef.current = [...survivingCreatures, ...newCreatures];
       console.log(
-        `Added ${newCreatures.length} new creatures from external source`
+        `Added ${newCreatures.length} new creatures from external source (safe spawn)`
       );
     } else if (survivingCreatures.length !== creaturesRef.current.length) {
       // 削除のみ
@@ -249,14 +289,43 @@ const EcosystemCanvas = ({
       );
 
       let updatedCreatures = currentCreatures.map((creature) => {
+        const currentFrame = frameCountRef.current;
+
+        // 撤退状態・無防備状態の回復チェック
+        let isRetreating = creature.isRetreating ?? false;
+        let isVulnerable = creature.isVulnerable ?? false;
+        let vulnerableUntil = creature.vulnerableUntil ?? 0;
+
+        // 無防備状態の終了チェック
+        if (isVulnerable && currentFrame > vulnerableUntil) {
+          isVulnerable = false;
+        }
+
+        // 撤退完了チェック（巣の近くに戻った場合）
+        if (isRetreating && creature.homePosition) {
+          const dx = creature.homePosition.x - creature.position.x;
+          const dy = creature.homePosition.y - creature.position.y;
+          const distToHome = Math.sqrt(dx * dx + dy * dy);
+          if (distToHome < 20) {
+            isRetreating = false;
+          }
+        }
+
         // 動作プログラムに基づいた知的移動を計算
+        const creatureWithState = {
+          ...creature,
+          isRetreating,
+          isVulnerable,
+          vulnerableUntil,
+        };
         const intelligentForce = calculateIntelligentMovement(
-          creature,
+          creatureWithState,
           currentCreatures,
           currentPlants,
           canvasWidth,
           canvasHeight,
-          obstaclesRef.current
+          obstaclesRef.current,
+          currentFrame
         );
 
         // 速度を更新（知的移動 + 現在の速度の慣性）- ゆっくり動く
@@ -358,6 +427,9 @@ const EcosystemCanvas = ({
           wanderAngle: newWanderAngle,
           survivalFrames: newSurvivalFrames,
           survivalPoints: newSurvivalPoints,
+          isRetreating,
+          isVulnerable,
+          vulnerableUntil,
         };
       });
 
@@ -472,22 +544,102 @@ const EcosystemCanvas = ({
               };
             } else {
               // 戦闘・捕食処理
-              const { c1Damage, c2Damage, c1EnergyGain, c2EnergyGain } =
-                handleCombat(c1, c2);
 
-              updatedCreatures[i] = {
+              // グリーンの反撃判定（逃げずに立ち向かっている場合）
+              const c1Type = getSpeciesType(c1.species);
+              const c2Type = getSpeciesType(c2.species);
+
+              // c1がグリーンでc2がレッドの場合、c1が反撃中かどうか判定
+              let c1IsCounterAttacking = false;
+              if (c1Type === "green" && c2Type === "red") {
+                const counterAttack = c1.behaviorProgram.counterAttack ?? 0.1;
+                const bravery = c1.behaviorProgram.bravery ?? 0.5;
+                // 反撃傾向が高く、エネルギーがある場合は反撃中
+                c1IsCounterAttacking =
+                  (counterAttack > 0.3 || bravery > 0.5) && c1.energy > 50;
+              }
+
+              // c2がグリーンでc1がレッドの場合、c2が反撃中かどうか判定
+              let c2IsCounterAttacking = false;
+              if (c2Type === "green" && c1Type === "red") {
+                const counterAttack = c2.behaviorProgram.counterAttack ?? 0.1;
+                const bravery = c2.behaviorProgram.bravery ?? 0.5;
+                c2IsCounterAttacking =
+                  (counterAttack > 0.3 || bravery > 0.5) && c2.energy > 50;
+              }
+
+              // 反撃状態を設定してからhandleCombatを呼ぶ
+              const c1WithState = {
                 ...c1,
+                isCounterAttacking: c1IsCounterAttacking,
+              };
+              const c2WithState = {
+                ...c2,
+                isCounterAttacking: c2IsCounterAttacking,
+              };
+
+              const {
+                c1Damage,
+                c2Damage,
+                c1EnergyGain,
+                c2EnergyGain,
+                c1AttackPoints,
+                c2AttackPoints,
+                c1WasAttacked,
+                c2WasAttacked,
+              } = handleCombat(c1WithState, c2WithState);
+
+              const currentFrame = frameCountRef.current;
+
+              // c1の更新（攻撃を受けた場合の状態変更を含む）
+              let c1Update: Partial<Creature> = {
                 energy: Math.min(
                   100,
                   Math.max(0, c1.energy - c1Damage + c1EnergyGain)
                 ),
+                survivalPoints: c1.survivalPoints + c1AttackPoints,
               };
-              updatedCreatures[j] = {
-                ...c2,
+
+              if (c1WasAttacked && c1Damage > 0) {
+                c1Update.lastAttackedBy = c2.id;
+                c1Update.lastAttackedAt = currentFrame;
+
+                // レッドがダメージを受けた場合、撤退して無防備状態に
+                if (getSpeciesType(c1.species) === "red") {
+                  c1Update.isRetreating = true;
+                  c1Update.isVulnerable = true;
+                  c1Update.vulnerableUntil = currentFrame + 300; // 5秒間無防備
+                }
+              }
+
+              // c2の更新
+              let c2Update: Partial<Creature> = {
                 energy: Math.min(
                   100,
                   Math.max(0, c2.energy - c2Damage + c2EnergyGain)
                 ),
+                survivalPoints: c2.survivalPoints + c2AttackPoints,
+              };
+
+              if (c2WasAttacked && c2Damage > 0) {
+                c2Update.lastAttackedBy = c1.id;
+                c2Update.lastAttackedAt = currentFrame;
+
+                // レッドがダメージを受けた場合、撤退して無防備状態に
+                if (getSpeciesType(c2.species) === "red") {
+                  c2Update.isRetreating = true;
+                  c2Update.isVulnerable = true;
+                  c2Update.vulnerableUntil = currentFrame + 300; // 5秒間無防備
+                }
+              }
+
+              updatedCreatures[i] = {
+                ...c1,
+                ...c1Update,
+              };
+              updatedCreatures[j] = {
+                ...c2,
+                ...c2Update,
               };
 
               // 衝突で少し離す

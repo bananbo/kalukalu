@@ -23,7 +23,7 @@ export default function AIGeneratorPopup({ isOpen, onToggle }: AIGeneratorPopupP
     setAiResult(null);
 
     try {
-      const response = await fetch("http://localhost:3001/api/creature/generate", {
+      const response = await fetch("http://localhost:3001/api/creature/preview-ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -58,7 +58,7 @@ export default function AIGeneratorPopup({ isOpen, onToggle }: AIGeneratorPopupP
     setAiResult(null);
 
     try {
-      const response = await fetch("http://localhost:3001/api/creature/generate-and-add", {
+      const response = await fetch("http://localhost:3001/api/creature/create-ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

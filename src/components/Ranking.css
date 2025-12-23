@@ -1,10 +1,8 @@
 .ranking-panel {
   flex: 1;
-  background: rgba(30, 41, 59, 0.5);
   border-radius: 8px;
-  padding: 1rem;
-  border: 1px solid #334155;
-  margin: 1.5rem 1.5rem 0 1.5rem;
+  padding: 0.75rem;
+  margin: 0 1rem 1rem 1rem;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -14,7 +12,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
   flex-shrink: 0;
 }
 
@@ -23,30 +21,126 @@
   font-weight: 600;
   color: #e2e8f0;
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
-.time-remaining {
-  text-align: center;
-  font-size: 0.75rem;
-  color: #94a3b8;
-  margin-bottom: 0.75rem;
-  padding: 0.5rem;
-  background: rgba(15, 23, 42, 0.6);
+/* ... list styles ... */
+
+.ranking-item {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.625rem;
+  background: rgba(15, 23, 42, 0.3);
   border-radius: 4px;
-  border: 1px solid #475569;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+  margin-bottom: 0.375rem;
 }
 
-.time-remaining .time {
-  font-weight: bold;
-  color: #f87171;
+.ranking-item:last-child {
+  margin-bottom: 0;
+}
+
+.ranking-item:hover {
+  background: rgba(15, 23, 42, 0.5);
+}
+
+/* ... first place style ... */
+.ranking-item.first-place {
+  background: linear-gradient(
+    135deg,
+    rgba(251, 191, 36, 0.15) 0%,
+    rgba(245, 158, 11, 0.15) 100%
+  );
+  /* border reduced opacity */
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  box-shadow: none; /* Removed shadow */
+}
+
+/* ... reset button ... */
+.reset-ranking-btn {
+  width: 24px; /* Smaller */
+  height: 24px;
+  padding: 0;
+  background: transparent; /* Cleaner */
+  border: none;
+  border-radius: 4px;
+  color: #fca5a5;
   font-size: 0.875rem;
-  margin-left: 0.25rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0.7;
 }
 
-.ranking-list {
+.reset-ranking-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  opacity: 1;
+  transform: none;
+}
+
+/* ... top players ... */
+.top-players {
   display: flex;
   flex-direction: column;
   gap: 0.375rem;
+  margin-bottom: 0.75rem;
+}
+
+.top-player {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.625rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  border: 1px solid transparent;
+  background: rgba(15, 23, 42, 0.3);
+}
+
+.top-player.alltime {
+  /* Subtle background */
+  background: rgba(251, 191, 36, 0.1);
+}
+
+.top-player.today {
+  /* Subtle background */
+  background: rgba(96, 165, 250, 0.1);
+}
+
+.top-player .label {
+  font-weight: 600;
+  margin-right: 0.5rem;
+  min-width: 60px;
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.top-player .name {
+  flex: 1;
+  font-weight: 600;
+  color: #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.top-player .pts {
+  font-weight: bold;
+  color: #10b981;
+  font-size: 0.8rem;
+}
+
+/* Ranking list */
+.ranking-list {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   overflow-y: auto;
 }
@@ -76,55 +170,30 @@
   font-size: 0.75rem;
 }
 
-.ranking-item {
-  display: flex;
-  align-items: center;
-  padding: 0.5rem 0.625rem;
-  background: rgba(15, 23, 42, 0.4);
-  border-radius: 4px;
-  border: 1px solid #475569;
-  transition: all 0.2s;
-}
-
-.ranking-item:hover {
-  background: rgba(15, 23, 42, 0.6);
-  border-color: #64748b;
-}
-
-.ranking-item.first-place {
-  background: linear-gradient(
-    135deg,
-    rgba(251, 191, 36, 0.25) 0%,
-    rgba(245, 158, 11, 0.25) 100%
-  );
-  border: 1px solid rgba(251, 191, 36, 0.5);
-  box-shadow: 0 1px 4px rgba(251, 191, 36, 0.2);
-}
-
 .ranking-item .rank {
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   font-weight: bold;
   color: #94a3b8;
-  min-width: 28px;
+  min-width: 32px;
   text-align: center;
 }
 
 .ranking-item.first-place .rank {
   color: #fbbf24;
-  font-size: 0.8rem;
+  font-size: 0.875rem;
 }
 
 .ranking-item .author-info {
   flex: 1;
-  margin: 0 0.5rem;
+  margin: 0 0.625rem;
   min-width: 0;
 }
 
 .ranking-item .creature-name {
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: #e2e8f0;
-  margin-bottom: 2px;
+  margin-bottom: 0.125rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -146,17 +215,17 @@
 }
 
 .ranking-item .creature-author {
-  font-size: 0.625rem;
+  font-size: 0.65rem;
   color: #64748b;
 }
 
 .ranking-item .points-info {
   text-align: right;
-  min-width: 55px;
+  min-width: 60px;
 }
 
 .ranking-item .points {
-  font-size: 0.8rem;
+  font-size: 0.875rem;
   font-weight: bold;
   color: #10b981;
 }
@@ -164,106 +233,25 @@
 .ranking-item .today-pts {
   font-size: 0.625rem;
   color: #fb923c;
-  margin-top: 2px;
+  margin-top: 0.125rem;
 }
 
 .ranking-item .current-pts {
   font-size: 0.625rem;
   color: #4ade80;
-  margin-top: 2px;
+  margin-top: 0.125rem;
 }
 
 .ranking-item.first-place .points {
   color: #fbbf24;
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
 }
 
 .ranking-item.inactive {
   opacity: 0.5;
-  background: rgba(15, 23, 42, 0.3);
+  background: rgba(15, 23, 42, 0.2);
 }
 
 .ranking-item.inactive .creature-name {
   color: #64748b;
-}
-
-/* 累計1位・今日1位 */
-.top-players {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-}
-
-.top-player {
-  display: flex;
-  align-items: center;
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  border: 1px solid;
-}
-
-.top-player.alltime {
-  background: linear-gradient(
-    135deg,
-    rgba(251, 191, 36, 0.2) 0%,
-    rgba(245, 158, 11, 0.2) 100%
-  );
-  border-color: rgba(251, 191, 36, 0.4);
-}
-
-.top-player.today {
-  background: linear-gradient(
-    135deg,
-    rgba(96, 165, 250, 0.2) 0%,
-    rgba(59, 130, 246, 0.2) 100%
-  );
-  border-color: rgba(96, 165, 250, 0.4);
-}
-
-.top-player .label {
-  font-weight: 600;
-  margin-right: 0.5rem;
-  min-width: 55px;
-  color: #cbd5e1;
-}
-
-.top-player .name {
-  flex: 1;
-  font-weight: 600;
-  color: #e2e8f0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.top-player .pts {
-  font-weight: bold;
-  color: #10b981;
-  font-size: 0.8rem;
-}
-
-/* リセットアイコンボタン */
-.reset-ranking-btn {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  background: rgba(239, 68, 68, 0.2);
-  border: 1px solid rgba(239, 68, 68, 0.4);
-  border-radius: 4px;
-  color: #fca5a5;
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.reset-ranking-btn:hover {
-  background: rgba(239, 68, 68, 0.4);
-  border-color: rgba(239, 68, 68, 0.6);
-  transform: scale(1.1);
 }

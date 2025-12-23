@@ -189,7 +189,9 @@ export default function CreatureStats({ creatures }: CreatureStatsProps) {
               <span className="status-label">
                 <span className="icon icon-time"></span> 年齢
               </span>
-              <span className="status-value">{creature.age}s</span>
+              <span className="status-value">
+                {Math.floor(creature.age / 60)}s
+              </span>
             </div>
             <div className="status-item">
               <span className="status-label">

@@ -14,6 +14,11 @@ interface BehaviorProgram {
   ignoreObstacleBlockedTargets: boolean; // 障害物で遮られた目標を無視するか
   avoidObstacleInterior: boolean; // 障害物の内部を目標にしないか
   activeHunterAttack: number; // ハンター積極攻撃度 (0.0 ~ 1.0)
+  // 新しい行動パラメータ
+  flockingBehavior: number; // 群れ行動 (0.0 ~ 1.0)
+  foodGreed: number; // 食欲 (0.0 ~ 1.0)
+  panicThreshold: number; // パニック閾値 (0.0 ~ 1.0)
+  bravery: number; // 勇敢さ (0.0 ~ 1.0)
 }
 
 // AIが返すJSON形式の定義
@@ -111,6 +116,13 @@ interface Creature {
   splitCooldown: number; // 分裂クールダウン
   survivalPoints: number; // 生存ポイント（10秒ごとに+1）
   survivalFrames: number; // 生存フレーム数（60fps想定）
+  // 戦闘状態
+  isRetreating: boolean; // 巣に撤退中（レッド用）
+  isVulnerable: boolean; // 無防備状態（攻撃されやすい）
+  vulnerableUntil: number; // 無防備状態の終了フレーム
+  lastAttackedBy: string | null; // 最後に攻撃してきた相手のID
+  lastAttackedAt: number; // 最後に攻撃された時刻（フレーム数）
+  isCounterAttacking: boolean; // 反撃中（回避せず立ち向かっている）
 }
 
 export class CreatureGenerator {
@@ -238,7 +250,11 @@ export class CreatureGenerator {
     "counterAttack": 0.0〜1.0（反撃傾向、高いと逃げずに反撃を試みる）,
     "ignoreObstacleBlockedTargets": true/false（障害物で遮られた目標を無視するか、賢い生物はtrue）,
     "avoidObstacleInterior": true/false（障害物の内部を目標にしないか、普通はtrue）,
-    "activeHunterAttack": 0.0〜1.0（ハンター積極攻撃度、高いと回り込んで攻撃）
+    "activeHunterAttack": 0.0〜1.0（ハンター積極攻撃度、高いと回り込んで攻撃）,
+    "flockingBehavior": 0.0〜1.0（群れ行動、高いと仲間と一緒に移動）,
+    "foodGreed": 0.0〜1.0（食欲、高いと植物を積極的に探す）,
+    "panicThreshold": 0.0〜1.0（パニック閾値、低いとすぐパニック逃走）,
+    "bravery": 0.0〜1.0（勇敢さ、高いと仲間を助けに行く）
   },
   "vision": {
     "angle": 視野角（ラジアン、0.5〜6.28、捕食者は狭く、草食は広く）,
@@ -271,6 +287,16 @@ export class CreatureGenerator {
 【ハンター攻撃】
 - activeHunterAttack: 高い＝積極的にレッド族を攻撃し、回り込む動きをする
 - コメントに「攻撃的」「戦闘」「ハンター」「狩る」などがあれば高く設定
+
+【群れ・社会行動（新機能）】
+- flockingBehavior: 高い＝群れで行動、仲間の近くにいようとする
+  コメントに「群れ」「仲間」「集団」「チーム」などがあれば高く
+- foodGreed: 高い＝食いしん坊、植物を見つけるとすぐ食べに行く
+  コメントに「食べる」「腹減り」「グルメ」「飢餓」などがあれば高く
+- panicThreshold: 低い＝臆病でパニックになりやすい
+  コメントに「臆病」「怖がり」「ビビり」などがあれば低く（0.2〜0.4）
+- bravery: 高い＝勇敢、仲間がピンチの時に助けに行く
+  コメントに「勇者」「ヒーロー」「守護」「正義」などがあれば高く
 
 コメント内容から生物の性格や特徴を推測し、面白いキャラクターを生成してください。
 `;
@@ -326,6 +352,13 @@ export class CreatureGenerator {
       splitCooldown: 0, // 分裂クールダウン初期値
       survivalPoints: 0, // 生存ポイント初期値
       survivalFrames: 0, // 生存フレーム数初期値
+      // 戦闘状態の初期値
+      isRetreating: false, // 撤退中ではない
+      isVulnerable: false, // 無防備ではない
+      vulnerableUntil: 0, // 無防備状態の終了フレーム
+      lastAttackedBy: null, // 最後に攻撃してきた相手
+      lastAttackedAt: 0, // 最後に攻撃された時刻
+      isCounterAttacking: false, // 反撃中ではない
     };
   }
 
@@ -463,6 +496,13 @@ export class CreatureGenerator {
       splitCooldown: 0, // 分裂クールダウン初期値
       survivalPoints: 0, // 生存ポイント初期値
       survivalFrames: 0, // 生存フレーム数初期値
+      // 戦闘状態の初期値
+      isRetreating: false, // 撤退中ではない
+      isVulnerable: false, // 無防備ではない
+      vulnerableUntil: 0, // 無防備状態の終了フレーム
+      lastAttackedBy: null, // 最後に攻撃してきた相手
+      lastAttackedAt: 0, // 最後に攻撃された時刻
+      isCounterAttacking: false, // 反撃中ではない
     };
   }
 
@@ -537,66 +577,41 @@ export class CreatureGenerator {
   }
 
   private generateName(message: string, author: string): string {
-    // ランダムな生物名の接頭辞と接尾辞
-    const prefixes = [
-      "キラ",
-      "モフ",
-      "ゴロ",
-      "ピカ",
-      "ズン",
-      "ニャ",
-      "ワン",
-      "クル",
-      "フワ",
-      "ドン",
+    // ティー系の名前リスト（グリーン族用）
+    const teaNames = [
+      "アールグレイ",
+      "ダージリン",
+      "アッサム",
+      "セイロン",
+      "ウバ",
+      "ニルギリ",
+      "キーマン",
+      "ラプサン",
+      "カモミール",
+      "ジャスミン",
+      "ルイボス",
+      "マテ",
+      "ほうじ茶",
+      "抹茶",
+      "玉露",
+      "煎茶",
+      "烏龍茶",
+      "プーアル",
+      "鉄観音",
+      "ペパーミント",
+      "レモングラス",
+      "ハイビスカス",
+      "ローズヒップ",
+      "ベルガモット",
+      "チャイ",
+      "ミルクティー",
+      "オレンジペコ",
+      "ティーバッグ",
     ];
-    const suffixes = [
-      "ザウルス",
-      "モン",
-      "ちゃん",
-      "くん",
-      "ー",
-      "リン",
-      "ポン",
-      "タン",
-      "マル",
-      "ノフ",
-    ];
 
-    // メッセージから特徴的なキーワードを抽出
-    const message_lower = message.toLowerCase();
-    let baseName = "";
-
-    // 色から名前を生成
-    const colorMap: { [key: string]: string } = {
-      赤: "レッド",
-      青: "ブルー",
-      緑: "グリーン",
-      黄: "イエロー",
-      白: "ホワイト",
-      黒: "ブラック",
-      紫: "パープル",
-      橙: "オレンジ",
-      red: "レッド",
-      blue: "ブルー",
-      green: "グリーン",
-      yellow: "イエロー",
-    };
-
-    for (const [key, value] of Object.entries(colorMap)) {
-      if (message_lower.includes(key)) {
-        baseName = value;
-        break;
-      }
-    }
-
-    // ベース名がない場合はランダム生成
-    if (!baseName) {
-      const hash = this.simpleHash(message + author);
-      const prefix = prefixes[hash % prefixes.length];
-      const suffix = suffixes[(hash >> 4) % suffixes.length];
-      baseName = prefix + suffix;
-    }
+    // メッセージと作者名からハッシュを生成してランダムに選択
+    const hash = this.simpleHash(message + author);
+    const baseName = teaNames[hash % teaNames.length];
 
     return baseName;
   }
@@ -1014,6 +1029,75 @@ export class CreatureGenerator {
       activeHunterAttack = Math.min(1, activeHunterAttack + 0.2);
     }
 
+    // 群れ行動の計算
+    let flockingBehavior = 0.3; // デフォルト
+    if (behavior.social === "pack" || behavior.social === "swarm") {
+      flockingBehavior = Math.min(1, flockingBehavior + 0.5);
+    }
+    if (attributes.social > 6) {
+      flockingBehavior = Math.min(1, flockingBehavior + 0.2);
+    }
+
+    // 食欲の計算
+    let foodGreed = 0.5; // デフォルト
+    if (behavior.diet === "herbivore") {
+      foodGreed = Math.min(1, foodGreed + 0.3); // 草食は食欲旺盛
+    }
+    // キーワードチェック
+    const foodKeywords = [
+      "食べる",
+      "腹減",
+      "グルメ",
+      "飢餓",
+      "大食い",
+      "eat",
+      "hungry",
+      "greedy",
+    ];
+    if (foodKeywords.some((k) => message_lower.includes(k))) {
+      foodGreed = Math.min(1, foodGreed + 0.3);
+    }
+
+    // パニック閾値の計算（低いほどパニックになりやすい）
+    let panicThreshold = 0.5; // デフォルト
+    if (fleeWhenWeak > 0.7) {
+      panicThreshold = Math.max(0.1, panicThreshold - 0.3);
+    }
+    if (attributes.intelligence > 6) {
+      panicThreshold = Math.min(1, panicThreshold + 0.2); // 賢いと冷静
+    }
+    const panicKeywords = [
+      "臆病",
+      "怖がり",
+      "ビビり",
+      "coward",
+      "scared",
+      "nervous",
+    ];
+    if (panicKeywords.some((k) => message_lower.includes(k))) {
+      panicThreshold = Math.max(0.1, panicThreshold - 0.3);
+    }
+
+    // 勇敢さの計算
+    let bravery = 0.3; // デフォルト
+    if (aggressiveness > 0.5) {
+      bravery = Math.min(1, bravery + 0.3);
+    }
+    const braveryKeywords = [
+      "勇者",
+      "ヒーロー",
+      "守護",
+      "正義",
+      "勇敢",
+      "brave",
+      "hero",
+      "protect",
+      "justice",
+    ];
+    if (braveryKeywords.some((k) => message_lower.includes(k))) {
+      bravery = Math.min(1, bravery + 0.4);
+    }
+
     return {
       approachAlly: Math.max(-1, Math.min(1, approachAlly)),
       approachEnemy: Math.max(-1, Math.min(1, approachEnemy)),
@@ -1028,21 +1112,25 @@ export class CreatureGenerator {
       ignoreObstacleBlockedTargets,
       avoidObstacleInterior,
       activeHunterAttack: Math.max(0, Math.min(1, activeHunterAttack)),
+      flockingBehavior: Math.max(0, Math.min(1, flockingBehavior)),
+      foodGreed: Math.max(0, Math.min(1, foodGreed)),
+      panicThreshold: Math.max(0, Math.min(1, panicThreshold)),
+      bravery: Math.max(0, Math.min(1, bravery)),
     };
   }
 
   // レッド族（鬼）を生成する
   generateRedCreature(index: number): Creature {
-    // 名前と性格のペア（それぞれ個性がある）
+    // 名前と性格のペア（コーヒー系列の名前）
     const redProfiles = [
-      { name: "ハンター", curiosity: 0.9, aggressiveness: 0.95, speed: 8 },
-      { name: "ストーカー", curiosity: 0.6, aggressiveness: 0.85, speed: 7 },
-      { name: "シャドウ", curiosity: 0.7, aggressiveness: 0.9, speed: 9 },
-      { name: "プレデター", curiosity: 0.8, aggressiveness: 1.0, speed: 8 },
-      { name: "レイヴン", curiosity: 0.75, aggressiveness: 0.88, speed: 7 },
-      { name: "ダークネス", curiosity: 0.5, aggressiveness: 0.8, speed: 8 },
-      { name: "レッドアイ", curiosity: 0.85, aggressiveness: 0.92, speed: 9 },
-      { name: "ブラッドハウンド", curiosity: 0.95, aggressiveness: 0.87, speed: 8 },
+      { name: "エスプレッソ", curiosity: 0.9, aggressiveness: 0.95, speed: 8 },
+      { name: "カプチーノ", curiosity: 0.6, aggressiveness: 0.85, speed: 7 },
+      { name: "モカ", curiosity: 0.7, aggressiveness: 0.9, speed: 9 },
+      { name: "アメリカーノ", curiosity: 0.8, aggressiveness: 1.0, speed: 8 },
+      { name: "ラテ", curiosity: 0.75, aggressiveness: 0.88, speed: 7 },
+      { name: "マキアート", curiosity: 0.5, aggressiveness: 0.8, speed: 8 },
+      { name: "リストレット", curiosity: 0.85, aggressiveness: 0.92, speed: 9 },
+      { name: "コルタード", curiosity: 0.95, aggressiveness: 0.87, speed: 8 },
     ];
 
     const profile = redProfiles[index % redProfiles.length];
@@ -1099,6 +1187,10 @@ export class CreatureGenerator {
       ignoreObstacleBlockedTargets: true, // 賢い（障害物越しの目標を無視）
       avoidObstacleInterior: true, // 賢い（障害物内部を目標にしない）
       activeHunterAttack: 0.0, // レッドは他のレッドを攻撃しない
+      flockingBehavior: 0.1, // 群れない
+      foodGreed: 0.0, // 植物を食べない
+      panicThreshold: 1.0, // パニックにならない
+      bravery: 0.0, // 勇敢さ不要（鬼側）
     };
 
     const vision = this.generateVision("レッド族");
@@ -1135,32 +1227,39 @@ export class CreatureGenerator {
       splitCooldown: 0,
       survivalPoints: 0, // 生存ポイント初期値
       survivalFrames: 0, // 生存フレーム数初期値
+      // 戦闘状態の初期値
+      isRetreating: false, // 撤退中ではない
+      isVulnerable: false, // 無防備ではない
+      vulnerableUntil: 0, // 無防備状態の終了フレーム
+      lastAttackedBy: null, // 最後に攻撃してきた相手
+      lastAttackedAt: 0, // 最後に攻撃された時刻
+      isCounterAttacking: false, // 反撃中ではない
     };
   }
 
   // グリーン族（逃げる側）を生成する（自動補充用）
   generateGreenCreature(index: number): Creature {
+    // ティー系列の名前
     const greenNames = [
-      "リーフ",
-      "モス",
-      "フォレスト",
-      "スプラウト",
-      "バド",
-      "クローバー",
-      "ミント",
-      "セージ",
-      "フェンネル",
-      "バジル",
-      "タイム",
-      "ローズマリー",
-      "オレガノ",
-      "パセリ",
-      "コリアンダー",
-      "ラベンダー",
+      "アールグレイ",
+      "ダージリン",
+      "アッサム",
+      "セイロン",
+      "ウバ",
       "カモミール",
       "ジャスミン",
-      "ヒース",
-      "アイビー",
+      "ルイボス",
+      "マテ",
+      "ほうじ茶",
+      "抹茶",
+      "玉露",
+      "煎茶",
+      "烏龍茶",
+      "プーアル",
+      "ペパーミント",
+      "レモングラス",
+      "ハイビスカス",
+      "ローズヒップ",
     ];
 
     const position = {
@@ -1221,6 +1320,10 @@ export class CreatureGenerator {
       ignoreObstacleBlockedTargets: true, // 賢い（障害物越しの目標を無視）
       avoidObstacleInterior: true, // 賢い（障害物内部を目標にしない）
       activeHunterAttack: 0.4, // ハンター攻撃は中程度（システムグリーン）
+      flockingBehavior: 0.6, // 群れで行動
+      foodGreed: 0.7, // 植物を積極的に探す
+      panicThreshold: 0.4, // やや臆病
+      bravery: 0.2, // あまり勇敢ではない
     };
 
     const vision = this.generateVision("グリーン族");
@@ -1257,6 +1360,13 @@ export class CreatureGenerator {
       splitCooldown: 0,
       survivalPoints: 0, // 生存ポイント初期値
       survivalFrames: 0, // 生存フレーム数初期値
+      // 戦闘状態の初期値
+      isRetreating: false, // 撤退中ではない
+      isVulnerable: false, // 無防備ではない
+      vulnerableUntil: 0, // 無防備状態の終了フレーム
+      lastAttackedBy: null, // 最後に攻撃してきた相手
+      lastAttackedAt: 0, // 最後に攻撃された時刻
+      isCounterAttacking: false, // 反撃中ではない
     };
   }
 

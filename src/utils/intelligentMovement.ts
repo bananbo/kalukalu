@@ -10,6 +10,65 @@ import {
   getSpeciesType,
 } from "../types/creature";
 
+// グリーン系の仲間情報を取得する関数
+export function getGreenAlliesInfo(
+  creature: Creature,
+  allCreatures: Creature[]
+): {
+  allies: Creature[];
+  nearestAllyDist: number;
+  nearestAlly: Creature | null;
+  allyCenter: { x: number; y: number } | null;
+  totalAllies: number;
+} {
+  const allies = allCreatures.filter(
+    (c) =>
+      c.id !== creature.id &&
+      getSpeciesType(c.species) === "green" &&
+      c.energy > 0
+  );
+
+  if (allies.length === 0) {
+    return {
+      allies: [],
+      nearestAllyDist: Infinity,
+      nearestAlly: null,
+      allyCenter: null,
+      totalAllies: 0,
+    };
+  }
+
+  let nearestDist = Infinity;
+  let nearestAlly: Creature | null = null;
+  let centerX = 0;
+  let centerY = 0;
+
+  for (const ally of allies) {
+    const dx = ally.position.x - creature.position.x;
+    const dy = ally.position.y - creature.position.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist < nearestDist) {
+      nearestDist = dist;
+      nearestAlly = ally;
+    }
+
+    centerX += ally.position.x;
+    centerY += ally.position.y;
+  }
+
+  return {
+    allies,
+    nearestAllyDist: nearestDist,
+    nearestAlly,
+    allyCenter: {
+      x: centerX / allies.length,
+      y: centerY / allies.length,
+    },
+    totalAllies: allies.length,
+  };
+}
+
 // 周囲の生物と植物に基づいて移動方向を計算
 export function calculateIntelligentMovement(
   creature: Creature,
@@ -17,10 +76,13 @@ export function calculateIntelligentMovement(
   plants: Plant[],
   canvasWidth: number,
   canvasHeight: number,
-  obstacles: Obstacle[] = []
+  obstacles: Obstacle[] = [],
+  currentFrame: number = 0
 ): { x: number; y: number } {
   const program = creature.behaviorProgram;
   const myTier = getFoodChainTier(creature.species);
+  const myType = getSpeciesType(creature.species);
+
   // 視野距離を使用（detectionRangeの代わり）
   const detectionRange =
     creature.vision?.range || 120 + creature.attributes.intelligence * 10;
@@ -31,6 +93,57 @@ export function calculateIntelligentMovement(
   // 力のベクトル
   let forceX = 0;
   let forceY = 0;
+
+  // ===== レッドの撤退・無防備状態処理 =====
+  if (myType === "red" && creature.isRetreating && creature.homePosition) {
+    // 巣に向かって撤退
+    const dx = creature.homePosition.x - creature.position.x;
+    const dy = creature.homePosition.y - creature.position.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist > 10) {
+      // 撤退中は速度を上げて逃げる
+      const retreatSpeed = baseSpeed * 1.5;
+      return {
+        x: (dx / dist) * retreatSpeed,
+        y: (dy / dist) * retreatSpeed,
+      };
+    }
+    // 巣に到達したら静止（回復中）
+    return { x: 0, y: 0 };
+  }
+
+  // ===== 攻撃を受けた直後の反応 =====
+  const recentlyAttacked =
+    creature.lastAttackedAt && currentFrame - creature.lastAttackedAt < 60; // 1秒以内に攻撃された
+
+  if (recentlyAttacked && creature.lastAttackedBy) {
+    const attacker = allCreatures.find((c) => c.id === creature.lastAttackedBy);
+    if (attacker) {
+      const dx = attacker.position.x - creature.position.x;
+      const dy = attacker.position.y - creature.position.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist > 0) {
+        const bravery = program.bravery ?? 0.5;
+        const counterAttack = program.counterAttack ?? 0.1;
+
+        // 勇敢さと反撃傾向に基づいて行動を決定
+        if (bravery > 0.6 && counterAttack > 0.3 && creature.energy > 50) {
+          // 勇敢な性格は反撃
+          const counterForce = bravery * 0.8;
+          forceX += (dx / dist) * counterForce;
+          forceY += (dy / dist) * counterForce;
+        } else {
+          // 臆病な性格は逃げる
+          const panicThreshold = program.panicThreshold ?? 0.3;
+          const fleeForce = 1.0 - bravery + panicThreshold;
+          forceX -= (dx / dist) * fleeForce;
+          forceY -= (dy / dist) * fleeForce;
+        }
+      }
+    }
+  }
 
   // 群れの中心を計算
   let allyCount = 0;
@@ -44,6 +157,12 @@ export function calculateIntelligentMovement(
   let nearestThreatDist = Infinity;
   let nearestThreatX = 0;
   let nearestThreatY = 0;
+
+  // ===== グリーン系の仲間認識 =====
+  let greenAlliesInfo: ReturnType<typeof getGreenAlliesInfo> | null = null;
+  if (myType === "green") {
+    greenAlliesInfo = getGreenAlliesInfo(creature, allCreatures);
+  }
 
   // ===== 草食動物（グリーン系）は植物を探す =====
   if (myTier === "herbivore") {
@@ -157,28 +276,62 @@ export function calculateIntelligentMovement(
         // ===== 逃走 or 背後攻撃行動 =====
         const stealthAttack = program.stealthAttack ?? 0.3;
         const counterAttack = program.counterAttack ?? 0.1;
+        const bravery = program.bravery ?? 0.5;
 
         // 背後攻撃のチャンス判定
         const canBackstab = canAttackFromBehind(creature, other);
         const creatureType = getSpeciesType(creature.species);
 
-        if (canBackstab && stealthAttack > 0.3 && creatureType === "green") {
+        // グリーン系は仲間が近くにいると勇敢になる
+        let braveryBonus = 0;
+        if (creatureType === "green" && greenAlliesInfo) {
+          // 近くの仲間の数に応じて勇気ボーナス
+          const nearbyAllies = greenAlliesInfo.allies.filter((ally) => {
+            const dx = ally.position.x - creature.position.x;
+            const dy = ally.position.y - creature.position.y;
+            return Math.sqrt(dx * dx + dy * dy) < 100; // 100px以内の仲間
+          });
+          braveryBonus = Math.min(0.3, nearbyAllies.length * 0.1); // 最大+0.3
+        }
+
+        // レッドが無防備状態なら攻撃チャンス
+        const isTargetVulnerable =
+          getSpeciesType(other.species) === "red" && other.isVulnerable;
+
+        if (isTargetVulnerable && creatureType === "green") {
+          // 無防備なレッドには積極的に攻撃
+          const attackForce = 1.2 + braveryBonus;
+          forceX += dirX * attackForce;
+          forceY += dirY * attackForce;
+        } else if (
+          canBackstab &&
+          stealthAttack > 0.3 &&
+          creatureType === "green"
+        ) {
           // 背後から攻撃できる位置にいる！接近する
           const backstabForce = stealthAttack * closenessFactor * 1.2;
           forceX += dirX * backstabForce;
           forceY += dirY * backstabForce;
-        } else if (counterAttack > 0.5 && creature.energy > 70) {
-          // 反撃傾向が高く、体力がある場合は逃げずに向かう
-          const counterForce = counterAttack * closenessFactor * 0.5;
+        } else if (
+          (counterAttack + braveryBonus > 0.5 ||
+            bravery + braveryBonus > 0.7) &&
+          creature.energy > 70
+        ) {
+          // 反撃傾向が高く、体力がある場合は逃げずに向かう（仲間がいると強気）
+          const counterForce =
+            (counterAttack + braveryBonus) * closenessFactor * 0.5;
           // レッドの背後に回り込むように動く
           const perpX = -dirY; // 垂直方向
           const perpY = dirX;
           forceX += perpX * counterForce;
           forceY += perpY * counterForce;
         } else {
-          // 通常の逃走行動
+          // 通常の逃走行動（仲間が近くにいると逃げにくくなる）
+          const adjustedFleeStrength = Math.max(0.3, 1.0 - braveryBonus);
           const fleeForce =
-            closenessFactor * (0.8 + program.fleeWhenWeak * 0.5);
+            closenessFactor *
+            (0.8 + program.fleeWhenWeak * 0.5) *
+            adjustedFleeStrength;
           forceX -= dirX * fleeForce;
           forceY -= dirY * fleeForce;
         }

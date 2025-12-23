@@ -8,7 +8,7 @@ import "./App.css";
 
 function App() {
   const [creatures, setCreatures] = useState<Creature[]>([]);
-  const [ws, setWs] = useState<WebSocket | null>(null);
+  const [_ws, setWs] = useState<WebSocket | null>(null); // WebSocket参照を保持
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isAIPopupOpen, setIsAIPopupOpen] = useState(false);

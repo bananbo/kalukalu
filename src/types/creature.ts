@@ -12,6 +12,11 @@ export interface BehaviorProgram {
   ignoreObstacleBlockedTargets: boolean; // 障害物で遮られた目標を無視するか
   avoidObstacleInterior: boolean; // 障害物の内部を目標にしないか
   activeHunterAttack: number; // ハンター積極攻撃度 (0.0 ~ 1.0) - 高いと回り込んで攻撃
+  // 新しい行動パラメータ
+  flockingBehavior: number; // 群れ行動 (0.0 ~ 1.0) - 高いと仲間と一緒に移動
+  foodGreed: number; // 食欲 (0.0 ~ 1.0) - 高いと植物を積極的に探す
+  panicThreshold: number; // パニック閾値 (0.0 ~ 1.0) - 低いとすぐパニック逃走
+  bravery: number; // 勇敢さ (0.0 ~ 1.0) - 高いと仲間を助けに行く
 }
 
 // 種族タイプ（鬼ごっこシステム）
@@ -25,6 +30,7 @@ export interface Plant {
   size: number; // サイズ（見た目用）
   regrowthTimer: number; // 再生までのタイマー
   isConsumed: boolean; // 食べられたか
+  lifespanTimer: number; // 寿命タイマー（フレーム数、0になったら消滅）
 }
 
 // 壁・障害物
@@ -239,4 +245,11 @@ export interface Creature {
   splitCooldown: number; // 分裂クールダウン
   survivalPoints: number; // 生存ポイント（10秒ごとに+1）
   survivalFrames: number; // 生存フレーム数（60fps想定）
+  // 戦闘状態
+  isRetreating: boolean; // 巣に撤退中（レッド用）
+  isVulnerable: boolean; // 無防備状態（攻撃されやすい）
+  vulnerableUntil: number; // 無防備状態の終了フレーム
+  lastAttackedBy: string | null; // 最後に攻撃してきた相手のID
+  lastAttackedAt: number; // 最後に攻撃された時刻（フレーム数）
+  isCounterAttacking: boolean; // 反撃中（回避せず立ち向かっている）
 }

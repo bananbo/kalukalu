@@ -173,7 +173,7 @@ export default function Ranking({ creatures }: RankingProps) {
   const aliveTypeIds = new Set(currentScores.map((s) => s.typeId));
 
   const combinedRanking = Object.entries(storedRanking.allTime)
-    .filter(([typeId, data]) => {
+    .filter(([typeId]) => {
       // システム生成のtypeIDを除外
       const isSystemTypeId =
         typeId.startsWith("green-system-") || typeId.startsWith("red-system-");

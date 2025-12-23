@@ -7,6 +7,7 @@ import {
   getDefaultVision,
   getSpeciesType,
   canAttackFromBehind,
+  isInFieldOfView,
 } from "../types/creature";
 
 // 距離計算
@@ -171,6 +172,69 @@ export function handlePredation(
   };
 }
 
+// 敵（レッド）の視野に入っていない安全な位置を見つける
+export function findSafeSpawnPosition(
+  creatures: Creature[],
+  canvasWidth: number,
+  canvasHeight: number,
+  targetType: "green" | "external" // green: グリーン用、external: 外来種用
+): { x: number; y: number } {
+  const MARGIN = 50;
+  const MAX_ATTEMPTS = 50; // 最大試行回数
+
+  // レッドの生物リスト
+  const redCreatures = creatures.filter(
+    (c) => getSpeciesType(c.species) === "red"
+  );
+
+  // 外来種の場合は全ての敵を考慮（自分の種族以外）
+  const enemies =
+    targetType === "external"
+      ? creatures.filter((c) => getSpeciesType(c.species) !== "green") // 暫定: グリーン以外を敵とみなす
+      : redCreatures;
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const x = MARGIN + Math.random() * (canvasWidth - MARGIN * 2);
+    const y = MARGIN + Math.random() * (canvasHeight - MARGIN * 2);
+
+    // この位置がどの敵の視野にも入っていないか確認
+    const isVisible = enemies.some((enemy) => isInFieldOfView(enemy, x, y));
+
+    if (!isVisible) {
+      // 安全な位置が見つかった
+      return { x, y };
+    }
+  }
+
+  // 安全な位置が見つからなかった場合は、できるだけ遠い位置を選ぶ
+  let bestPosition = { x: MARGIN, y: MARGIN };
+  let maxMinDistance = 0;
+
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const x = MARGIN + Math.random() * (canvasWidth - MARGIN * 2);
+    const y = MARGIN + Math.random() * (canvasHeight - MARGIN * 2);
+
+    // 最も近い敵までの距離
+    const minDistance =
+      enemies.length > 0
+        ? Math.min(
+            ...enemies.map((e) =>
+              Math.sqrt(
+                Math.pow(x - e.position.x, 2) + Math.pow(y - e.position.y, 2)
+              )
+            )
+          )
+        : Infinity;
+
+    if (minDistance > maxMinDistance) {
+      maxMinDistance = minDistance;
+      bestPosition = { x, y };
+    }
+  }
+
+  return bestPosition;
+}
+
 // 戦闘処理（鬼ごっこシステム）
 export function handleCombat(
   c1: Creature,
@@ -180,48 +244,141 @@ export function handleCombat(
   c2Damage: number;
   c1EnergyGain: number;
   c2EnergyGain: number;
+  c1AttackPoints: number; // 攻撃成功時のポイント
+  c2AttackPoints: number;
+  c1WasAttacked: boolean; // c1が攻撃を受けたか
+  c2WasAttacked: boolean; // c2が攻撃を受けたか
 } {
   const c1Type = getSpeciesType(c1.species);
   const c2Type = getSpeciesType(c2.species);
 
   // 同じ種族同士は戦闘しない
   if (c1Type === c2Type) {
-    return { c1Damage: 0, c2Damage: 0, c1EnergyGain: 0, c2EnergyGain: 0 };
+    return {
+      c1Damage: 0,
+      c2Damage: 0,
+      c1EnergyGain: 0,
+      c2EnergyGain: 0,
+      c1AttackPoints: 0,
+      c2AttackPoints: 0,
+      c1WasAttacked: false,
+      c2WasAttacked: false,
+    };
   }
 
   // グリーンがレッドを背後から攻撃する場合（ダメージを与える）
   if (c1Type === "green" && c2Type === "red") {
     if (canAttackFromBehind(c1, c2)) {
       // グリーン(c1)がレッド(c2)を背後から攻撃
-      // 攻撃者の力と背後攻撃スキルに基づくダメージ（15-35程度）
-      const damage = 15 + c1.attributes.strength * 2 + c1.behaviorProgram.stealthAttack * 10;
-      return { c1Damage: 0, c2Damage: damage, c1EnergyGain: 0, c2EnergyGain: 0 };
+      // 無防備状態なら追加ダメージ
+      const vulnerableBonus = c2.isVulnerable ? 15 : 0;
+      const damage =
+        15 +
+        c1.attributes.strength * 2 +
+        c1.behaviorProgram.stealthAttack * 10 +
+        vulnerableBonus;
+      // 攻撃成功で30ポイント獲得！（無防備なら+10）
+      const points = c2.isVulnerable ? 40 : 30;
+      return {
+        c1Damage: 0,
+        c2Damage: damage,
+        c1EnergyGain: 0,
+        c2EnergyGain: 0,
+        c1AttackPoints: points,
+        c2AttackPoints: 0,
+        c1WasAttacked: false,
+        c2WasAttacked: true,
+      };
     }
   }
 
   if (c2Type === "green" && c1Type === "red") {
     if (canAttackFromBehind(c2, c1)) {
       // グリーン(c2)がレッド(c1)を背後から攻撃
-      const damage = 15 + c2.attributes.strength * 2 + c2.behaviorProgram.stealthAttack * 10;
-      return { c1Damage: damage, c2Damage: 0, c1EnergyGain: 0, c2EnergyGain: 0 };
+      const vulnerableBonus = c1.isVulnerable ? 15 : 0;
+      const damage =
+        15 +
+        c2.attributes.strength * 2 +
+        c2.behaviorProgram.stealthAttack * 10 +
+        vulnerableBonus;
+      const points = c1.isVulnerable ? 40 : 30;
+      return {
+        c1Damage: damage,
+        c2Damage: 0,
+        c1EnergyGain: 0,
+        c2EnergyGain: 0,
+        c1AttackPoints: 0,
+        c2AttackPoints: points,
+        c1WasAttacked: true,
+        c2WasAttacked: false,
+      };
     }
   }
 
   // レッドがグリーンを捕まえる（鬼ごっこ）
   if (c1Type === "red" && c2Type === "green") {
     // レッド(c1)がグリーン(c2)を捕まえる
-    const damage = 30 + c1.attributes.strength * 3;
-    return { c1Damage: 0, c2Damage: damage, c1EnergyGain: 40, c2EnergyGain: 0 };
+    const baseDamage = 30 + c1.attributes.strength * 3;
+
+    // グリーンが反撃中（isCounterAttacking）の場合、レッドにわずかなダメージ
+    // 回避行動中（fleeWhenWeak が高い && !isCounterAttacking）の場合は反撃なし
+    let counterDamage = 0;
+    let counterPoints = 0;
+    if (c2.isCounterAttacking) {
+      // 反撃ダメージ（3-10程度、レッドへの牽制）
+      counterDamage =
+        3 + c2.attributes.strength + c2.behaviorProgram.counterAttack * 5;
+      counterPoints = 5; // 反撃で5ポイント
+    }
+
+    return {
+      c1Damage: counterDamage,
+      c2Damage: baseDamage,
+      c1EnergyGain: 40,
+      c2EnergyGain: 0,
+      c1AttackPoints: 0,
+      c2AttackPoints: counterPoints,
+      c1WasAttacked: counterDamage > 0,
+      c2WasAttacked: true,
+    };
   }
 
   if (c2Type === "red" && c1Type === "green") {
     // レッド(c2)がグリーン(c1)を捕まえる
-    const damage = 30 + c2.attributes.strength * 3;
-    return { c1Damage: damage, c2Damage: 0, c1EnergyGain: 0, c2EnergyGain: 40 };
+    const baseDamage = 30 + c2.attributes.strength * 3;
+
+    // グリーンが反撃中の場合
+    let counterDamage = 0;
+    let counterPoints = 0;
+    if (c1.isCounterAttacking) {
+      counterDamage =
+        3 + c1.attributes.strength + c1.behaviorProgram.counterAttack * 5;
+      counterPoints = 5;
+    }
+
+    return {
+      c1Damage: baseDamage,
+      c2Damage: counterDamage,
+      c1EnergyGain: 0,
+      c2EnergyGain: 40,
+      c1AttackPoints: counterPoints,
+      c2AttackPoints: 0,
+      c1WasAttacked: true,
+      c2WasAttacked: counterDamage > 0,
+    };
   }
 
   // その他の場合は戦闘なし
-  return { c1Damage: 0, c2Damage: 0, c1EnergyGain: 0, c2EnergyGain: 0 };
+  return {
+    c1Damage: 0,
+    c2Damage: 0,
+    c1EnergyGain: 0,
+    c2EnergyGain: 0,
+    c1AttackPoints: 0,
+    c2AttackPoints: 0,
+    c1WasAttacked: false,
+    c2WasAttacked: false,
+  };
 }
 
 // 植物を食べる処理
@@ -244,6 +401,9 @@ export function eatPlant(
   return { energyGain: plant.energy, canEat: true, plantPointsGain: 1 };
 }
 
+// 植物の寿命（フレーム数）- 約60秒
+const PLANT_LIFESPAN = 3600; // 60fps * 60秒
+
 // 植物を生成（画面端から一定距離離れた位置に）
 export function createPlant(canvasWidth: number, canvasHeight: number): Plant {
   const MARGIN = 50; // 画面端からの最小距離
@@ -257,6 +417,7 @@ export function createPlant(canvasWidth: number, canvasHeight: number): Plant {
     size: 3 + Math.random() * 4, // 3-7のサイズ
     regrowthTimer: 0,
     isConsumed: false,
+    lifespanTimer: PLANT_LIFESPAN, // 寿命タイマー初期化
   };
 }
 
@@ -273,12 +434,12 @@ export function createInitialPlants(
   return plants;
 }
 
-// 植物の更新（再生処理）
+// 植物の更新（再生処理と寿命処理）
 export function updatePlants(
   plants: Plant[],
   canvasWidth: number,
   canvasHeight: number,
-  maxPlants: number
+  _maxPlants: number // 将来の拡張用
 ): Plant[] {
   const REGROWTH_TIME = 300; // 5秒で再生
   const MARGIN = 50; // 画面端からの最小距離
@@ -287,7 +448,7 @@ export function updatePlants(
     if (plant.isConsumed) {
       const newTimer = plant.regrowthTimer + 1;
       if (newTimer >= REGROWTH_TIME) {
-        // 再生（画面端を避けた位置に）
+        // 再生（画面端を避けた位置に）- 寿命もリセット
         return {
           ...plant,
           isConsumed: false,
@@ -297,11 +458,25 @@ export function updatePlants(
             x: MARGIN + Math.random() * (canvasWidth - MARGIN * 2),
             y: MARGIN + Math.random() * (canvasHeight - MARGIN * 2),
           },
+          lifespanTimer: PLANT_LIFESPAN, // 寿命をリセット
         };
       }
       return { ...plant, regrowthTimer: newTimer };
     }
-    return plant;
+
+    // 寿命処理（消費されていない植物）
+    const newLifespan = plant.lifespanTimer - 1;
+    if (newLifespan <= 0) {
+      // 寿命が尽きた → 消費状態にして再生を待つ
+      return {
+        ...plant,
+        isConsumed: true,
+        regrowthTimer: 0,
+        lifespanTimer: 0,
+      };
+    }
+
+    return { ...plant, lifespanTimer: newLifespan };
   });
 }
 
@@ -377,25 +552,79 @@ export function split(
   const traits = { ...parent.traits };
 
   // behaviorProgramの遺伝：各パラメータを個別に継承
-  const inheritBehaviorValue = (parentValue: number, min: number = -1, max: number = 1) => {
+  const inheritBehaviorValue = (
+    parentValue: number,
+    min: number = -1,
+    max: number = 1
+  ) => {
     const variation = (Math.random() - 0.5) * (isMutation ? 0.3 : 0.1);
     return Math.min(max, Math.max(min, parentValue + variation));
   };
 
   const behaviorProgram = {
-    approachAlly: inheritBehaviorValue(parent.behaviorProgram.approachAlly, -1, 1),
-    approachEnemy: inheritBehaviorValue(parent.behaviorProgram.approachEnemy, -1, 1),
-    fleeWhenWeak: inheritBehaviorValue(parent.behaviorProgram.fleeWhenWeak, 0, 1),
-    aggressiveness: inheritBehaviorValue(parent.behaviorProgram.aggressiveness, 0, 1),
+    approachAlly: inheritBehaviorValue(
+      parent.behaviorProgram.approachAlly,
+      -1,
+      1
+    ),
+    approachEnemy: inheritBehaviorValue(
+      parent.behaviorProgram.approachEnemy,
+      -1,
+      1
+    ),
+    fleeWhenWeak: inheritBehaviorValue(
+      parent.behaviorProgram.fleeWhenWeak,
+      0,
+      1
+    ),
+    aggressiveness: inheritBehaviorValue(
+      parent.behaviorProgram.aggressiveness,
+      0,
+      1
+    ),
     curiosity: inheritBehaviorValue(parent.behaviorProgram.curiosity, 0, 1),
-    territoriality: inheritBehaviorValue(parent.behaviorProgram.territoriality, 0, 1),
-    obstacleAwareness: inheritBehaviorValue(parent.behaviorProgram.obstacleAwareness, 0, 1),
+    territoriality: inheritBehaviorValue(
+      parent.behaviorProgram.territoriality,
+      0,
+      1
+    ),
+    obstacleAwareness: inheritBehaviorValue(
+      parent.behaviorProgram.obstacleAwareness,
+      0,
+      1
+    ),
     obstacleStrategy: parent.behaviorProgram.obstacleStrategy,
-    stealthAttack: inheritBehaviorValue(parent.behaviorProgram.stealthAttack, 0, 1),
-    counterAttack: inheritBehaviorValue(parent.behaviorProgram.counterAttack, 0, 1),
-    ignoreObstacleBlockedTargets: parent.behaviorProgram.ignoreObstacleBlockedTargets,
+    stealthAttack: inheritBehaviorValue(
+      parent.behaviorProgram.stealthAttack,
+      0,
+      1
+    ),
+    counterAttack: inheritBehaviorValue(
+      parent.behaviorProgram.counterAttack,
+      0,
+      1
+    ),
+    ignoreObstacleBlockedTargets:
+      parent.behaviorProgram.ignoreObstacleBlockedTargets,
     avoidObstacleInterior: parent.behaviorProgram.avoidObstacleInterior,
-    activeHunterAttack: inheritBehaviorValue(parent.behaviorProgram.activeHunterAttack, 0, 1),
+    activeHunterAttack: inheritBehaviorValue(
+      parent.behaviorProgram.activeHunterAttack,
+      0,
+      1
+    ),
+    // 新しいパラメータ
+    flockingBehavior: inheritBehaviorValue(
+      parent.behaviorProgram.flockingBehavior,
+      0,
+      1
+    ),
+    foodGreed: inheritBehaviorValue(parent.behaviorProgram.foodGreed, 0, 1),
+    panicThreshold: inheritBehaviorValue(
+      parent.behaviorProgram.panicThreshold,
+      0,
+      1
+    ),
+    bravery: inheritBehaviorValue(parent.behaviorProgram.bravery, 0, 1),
   };
 
   const position = {
@@ -436,6 +665,13 @@ export function split(
     splitCooldown: 300, // 分裂クールダウン（5秒）
     survivalPoints: 0, // 生存ポイントは0からスタート
     survivalFrames: 0, // 生存フレーム数も0から
+    // 戦闘状態の初期値
+    isRetreating: false, // 撤退中ではない
+    isVulnerable: false, // 無防備ではない
+    vulnerableUntil: 0, // 無防備状態の終了フレーム
+    lastAttackedBy: null, // 最後に攻撃してきた相手
+    lastAttackedAt: 0, // 最後に攻撃された時刻
+    isCounterAttacking: false, // 反撃中ではない
   };
 
   // 親は植物ポイントを10消費し、クールダウンが発生
@@ -598,6 +834,94 @@ export function reproduce(
           (Math.random() - 0.5) * 0.2
       )
     ),
+    // 親から継承する追加のプロパティ
+    obstacleAwareness: Math.max(
+      0,
+      Math.min(
+        1,
+        (parent1.behaviorProgram.obstacleAwareness +
+          parent2.behaviorProgram.obstacleAwareness) /
+          2 +
+          (Math.random() - 0.5) * 0.1
+      )
+    ),
+    obstacleStrategy: parent1.behaviorProgram.obstacleStrategy, // 親1から継承
+    stealthAttack: Math.max(
+      0,
+      Math.min(
+        1,
+        (parent1.behaviorProgram.stealthAttack +
+          parent2.behaviorProgram.stealthAttack) /
+          2 +
+          (Math.random() - 0.5) * 0.1
+      )
+    ),
+    counterAttack: Math.max(
+      0,
+      Math.min(
+        1,
+        (parent1.behaviorProgram.counterAttack +
+          parent2.behaviorProgram.counterAttack) /
+          2 +
+          (Math.random() - 0.5) * 0.1
+      )
+    ),
+    ignoreObstacleBlockedTargets:
+      parent1.behaviorProgram.ignoreObstacleBlockedTargets ||
+      parent2.behaviorProgram.ignoreObstacleBlockedTargets,
+    avoidObstacleInterior:
+      parent1.behaviorProgram.avoidObstacleInterior ||
+      parent2.behaviorProgram.avoidObstacleInterior,
+    activeHunterAttack: Math.max(
+      0,
+      Math.min(
+        1,
+        (parent1.behaviorProgram.activeHunterAttack +
+          parent2.behaviorProgram.activeHunterAttack) /
+          2 +
+          (Math.random() - 0.5) * 0.1
+      )
+    ),
+    // 新しいパラメータ
+    flockingBehavior: Math.max(
+      0,
+      Math.min(
+        1,
+        (parent1.behaviorProgram.flockingBehavior +
+          parent2.behaviorProgram.flockingBehavior) /
+          2 +
+          (Math.random() - 0.5) * 0.1
+      )
+    ),
+    foodGreed: Math.max(
+      0,
+      Math.min(
+        1,
+        (parent1.behaviorProgram.foodGreed +
+          parent2.behaviorProgram.foodGreed) /
+          2 +
+          (Math.random() - 0.5) * 0.1
+      )
+    ),
+    panicThreshold: Math.max(
+      0,
+      Math.min(
+        1,
+        (parent1.behaviorProgram.panicThreshold +
+          parent2.behaviorProgram.panicThreshold) /
+          2 +
+          (Math.random() - 0.5) * 0.1
+      )
+    ),
+    bravery: Math.max(
+      0,
+      Math.min(
+        1,
+        (parent1.behaviorProgram.bravery + parent2.behaviorProgram.bravery) /
+          2 +
+          (Math.random() - 0.5) * 0.1
+      )
+    ),
   };
 
   // 親の近くに配置
@@ -616,6 +940,7 @@ export function reproduce(
     id: `creature-${Date.now()}-${Math.random()
       .toString(36)
       .substr(2, 9)}-${performance.now()}`,
+    typeId: parent1.typeId, // 親のtypeIdを継承
     name: `${parent1.name}Jr`,
     attributes,
     appearance,
@@ -638,6 +963,13 @@ export function reproduce(
     splitCooldown: 0, // 分裂クールダウン初期値
     survivalPoints: 0, // 生存ポイント初期値
     survivalFrames: 0, // 生存フレーム数初期値
+    // 戦闘状態の初期値
+    isRetreating: false, // 撤退中ではない
+    isVulnerable: false, // 無防備ではない
+    vulnerableUntil: 0, // 無防備状態の終了フレーム
+    lastAttackedBy: null, // 最後に攻撃してきた相手
+    lastAttackedAt: 0, // 最後に攻撃された時刻
+    isCounterAttacking: false, // 反撃中ではない
   };
 }
 
