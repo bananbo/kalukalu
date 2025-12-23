@@ -45,7 +45,7 @@ wss.on("connection", (ws) => {
           green: data.greenCount || 0,
           total: data.totalCount || 0,
         };
-        console.log("Creature counts updated:", currentCreatureCounts);
+        // ログ出力を削除（頻繁に更新されるため）
       }
     } catch (e) {
       console.log("Received non-JSON message:", message.toString());
@@ -168,14 +168,15 @@ app.post("/api/youtube/start", async (req, res) => {
 });
 
 // YouTube Live Chat自動開始（チャンネルIDからライブ配信を自動検出）
-app.post("/api/youtube/auto-start", async (req, res) => {
-  const { channelId } = req.body;
+app.post("/api/youtube/start-auto", async (req, res) => {
+  // .envからチャンネルIDを取得
+  const channelId = process.env.YOUTUBE_CHANNEL_ID;
 
   if (!channelId) {
     return res.status(400).json({
       success: false,
       error:
-        "channelId is required. You can find it in YouTube Studio or your channel URL.",
+        "YOUTUBE_CHANNEL_ID is not set in .env.local file. Please add your YouTube channel ID.",
     });
   }
 

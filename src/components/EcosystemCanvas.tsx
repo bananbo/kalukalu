@@ -75,9 +75,8 @@ const EcosystemCanvas = ({
     PointNotification[]
   >([]);
   const [dyingCreatures, setDyingCreatures] = useState<DyingCreature[]>([]);
-  const [spawningIds, setSpawningIds] = useState<Set<SpawningCreatureId>>(
-    new Set()
-  );
+  // spawningIdsはRefで管理（再レンダリングを防ぐ）
+  const spawningIdsRef = useRef<Set<SpawningCreatureId>>(new Set());
   const plantsRef = useRef<Plant[]>([]);
   const obstaclesRef = useRef<Obstacle[]>([]);
   const creaturesRef = useRef<Creature[]>(creatures);
@@ -88,9 +87,11 @@ const EcosystemCanvas = ({
   });
   const frameCountRef = useRef<number>(0);
   const soundManager = useRef(SoundManager.getInstance());
-  
+
   // ゲーム再開用の状態
-  const [gameOverCountdown, setGameOverCountdown] = useState<number | null>(null);
+  const [gameOverCountdown, setGameOverCountdown] = useState<number | null>(
+    null
+  );
   const restartTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // 行動状態を判定する関数
@@ -223,17 +224,13 @@ const EcosystemCanvas = ({
         return creature;
       });
 
-      // 登場アニメーション用にIDを記録
+      // 登場アニメーション用にIDを記録（Refで管理）
       const newIds = newCreatures.map((c) => c.id);
-      setSpawningIds((prev) => new Set([...prev, ...newIds]));
+      newIds.forEach((id) => spawningIdsRef.current.add(id));
 
       // 0.6秒後に登場アニメーション終了
       setTimeout(() => {
-        setSpawningIds((prev) => {
-          const next = new Set(prev);
-          newIds.forEach((id) => next.delete(id));
-          return next;
-        });
+        newIds.forEach((id) => spawningIdsRef.current.delete(id));
       }, 600);
 
       creaturesRef.current = [...survivingCreatures, ...newCreatures];
@@ -348,13 +345,9 @@ const EcosystemCanvas = ({
     if (newCreatures.length > 0) {
       const newCreature = newCreatures[0];
       setNewArrival(newCreature);
+      // 3秒後にアラートを消す（isNewArrivalフラグはシミュレーション内で自然に消える）
       setTimeout(() => {
         setNewArrival(null);
-        onCreatureUpdate(
-          creatures.map((c) =>
-            c.id === newCreature.id ? { ...c, isNewArrival: false } : c
-          )
-        );
       }, 3000);
     }
 
@@ -582,6 +575,8 @@ const EcosystemCanvas = ({
             vulnerableUntil,
             trackedAttackerPos,
             trackingUntil,
+            // 3秒（180フレーム）後に新着フラグを自動的にオフ
+            isNewArrival: creature.isNewArrival && newAge < 180 ? true : false,
           };
         }
       );
@@ -1100,7 +1095,7 @@ const EcosystemCanvas = ({
       if (greenCount === 0 && !restartTimerRef.current) {
         console.log("All Green creatures extinct! Restarting in 60 seconds...");
         setGameOverCountdown(60);
-        
+
         // カウントダウン開始
         let countdown = 60;
         const countdownInterval = setInterval(() => {
@@ -1110,14 +1105,14 @@ const EcosystemCanvas = ({
             clearInterval(countdownInterval);
           }
         }, 1000);
-        
+
         // 1分後に再開
         restartTimerRef.current = setTimeout(() => {
           console.log("Restarting game...");
           clearInterval(countdownInterval);
           setGameOverCountdown(null);
           restartTimerRef.current = null;
-          
+
           // 新しいゲームを開始（グリーンとレッドを生成）
           Promise.all([
             fetch("http://localhost:3001/api/creature/generate-green", {
@@ -1310,7 +1305,7 @@ const EcosystemCanvas = ({
         {/* 生物を描画 */}
         {creatures.map((creature) => {
           const behaviorState = getBehaviorState(creature, creatures);
-          const isSpawning = spawningIds.has(creature.id);
+          const isSpawning = spawningIdsRef.current.has(creature.id);
           return (
             <CreatureSVG
               key={creature.id}
@@ -1369,7 +1364,12 @@ const EcosystemCanvas = ({
             );
             const grouped = new Map<
               string,
-              { baseName: string; totalScore: number; count: number; typeId: string }
+              {
+                baseName: string;
+                totalScore: number;
+                count: number;
+                typeId: string;
+              }
             >();
 
             greenCreatures.forEach((c) => {

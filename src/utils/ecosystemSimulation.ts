@@ -323,13 +323,16 @@ export function handleCombat(
     // 体格（size）による防御力: 高いとダメージ軽減（最大60%軽減）
     // size=10の場合、ダメージは40%に（約5回耐えられる）
     const sizeDefense = 1 - c2.attributes.size * 0.06;
-    
+
     // グリーンが攻撃者（レッド）に正面から向き合っている場合はダメージ半減
     // レッド(c1)がグリーン(c2)の背後にいるか判定
     const isAttackedFromBehind = isTargetBehind(c1, c2); // c1(RED)がc2(GREEN)の背後にいるか
     const facingMultiplier = isAttackedFromBehind ? 1.0 : 0.5; // 背後からならフルダメージ、正面なら半減
-    
-    const finalDamage = Math.max(5, Math.floor(baseDamage * sizeDefense * facingMultiplier));
+
+    const finalDamage = Math.max(
+      5,
+      Math.floor(baseDamage * sizeDefense * facingMultiplier)
+    );
 
     // グリーンが反撃中（isCounterAttacking）の場合、レッドにわずかなダメージ
     // 回避行動中（fleeWhenWeak が高い && !isCounterAttacking）の場合は反撃なし
@@ -360,13 +363,16 @@ export function handleCombat(
     // 体格（size）による防御力: 高いとダメージ軽減（最大60%軽減）
     // size=10の場合、ダメージは40%に（約5回耐えられる）
     const sizeDefense = 1 - c1.attributes.size * 0.06;
-    
+
     // グリーンが攻撃者（レッド）に正面から向き合っている場合はダメージ半減
     // レッド(c2)がグリーン(c1)の背後にいるか判定
     const isAttackedFromBehind = isTargetBehind(c2, c1); // c2(RED)がc1(GREEN)の背後にいるか
     const facingMultiplier = isAttackedFromBehind ? 1.0 : 0.5; // 背後からならフルダメージ、正面なら半減
-    
-    const finalDamage = Math.max(5, Math.floor(baseDamage * sizeDefense * facingMultiplier));
+
+    const finalDamage = Math.max(
+      5,
+      Math.floor(baseDamage * sizeDefense * facingMultiplier)
+    );
 
     // グリーンが反撃中の場合
     let counterDamage = 0;

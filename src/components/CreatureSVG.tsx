@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Creature, Obstacle } from "../types/creature";
 
 interface CreatureSVGProps {
@@ -607,28 +607,20 @@ const CreatureSVG = ({
     );
   };
 
-  // SVG transformでスケールを適用（キャラクターの位置を中心に）
-  const getTransform = () => {
-    if (animScale === 1) return undefined;
-    // translate で原点をキャラクター位置に移動 → scale → 元に戻す
-    return `translate(${position.x}, ${
-      position.y
-    }) scale(${animScale}) translate(${-position.x}, ${-position.y})`;
-  };
-
   // 最終的な不透明度を計算
   const finalOpacity = (creature.energy > 0 ? 1 : 0.3) * animOpacity;
 
   return (
     <g
       className="creature"
-      opacity={finalOpacity}
-      transform={getTransform()}
       style={{
+        transform: `scale(${animScale})`,
+        opacity: finalOpacity,
+        transformOrigin: `${position.x}px ${position.y}px`,
         transition:
           isSpawning || isDying
             ? "transform 0.3s ease-out, opacity 0.3s ease-out"
-            : undefined,
+            : "none",
       }}
     >
       {getPattern()}
@@ -644,4 +636,25 @@ const CreatureSVG = ({
   );
 };
 
-export default CreatureSVG;
+// React.memoでラップして、propsが変わらない限り再レンダリングを防ぐ
+const MemoizedCreatureSVG = React.memo(CreatureSVG, (prevProps, nextProps) => {
+  // 位置、エネルギー、父性状態が同じなら再レンダリングしない
+  const prev = prevProps.creature;
+  const next = nextProps.creature;
+
+  return (
+    prev.id === next.id &&
+    Math.abs(prev.position.x - next.position.x) < 0.5 &&
+    Math.abs(prev.position.y - next.position.y) < 0.5 &&
+    Math.abs(prev.energy - next.energy) < 1 &&
+    prev.isVulnerable === next.isVulnerable &&
+    prev.isRetreating === next.isRetreating &&
+    prev.isCounterAttacking === next.isCounterAttacking &&
+    prevProps.behaviorState === nextProps.behaviorState &&
+    prevProps.isSpawning === nextProps.isSpawning &&
+    prevProps.isDying === nextProps.isDying &&
+    Math.abs(prev.wanderAngle - next.wanderAngle) < 0.1
+  );
+});
+
+export default MemoizedCreatureSVG;

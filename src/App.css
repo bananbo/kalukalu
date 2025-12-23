@@ -14,12 +14,39 @@
   background: rgba(15, 23, 42, 0.8);
   border-bottom: 2px solid #1e293b;
   backdrop-filter: blur(10px);
+  position: relative;
+  z-index: 10000;
 }
 
 .header-controls {
   display: flex;
   align-items: center;
   gap: 1rem;
+}
+
+.header-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+.header-add-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.header-add-btn:active {
+  transform: translateY(0);
 }
 
 .app-header h1 {
@@ -62,6 +89,7 @@
   flex: 1;
   position: relative;
   overflow: hidden;
+  z-index: 1;
 }
 
 .sidebar {

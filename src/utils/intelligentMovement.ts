@@ -372,7 +372,8 @@ export function calculateIntelligentMovement(
         // bravery 0.0 = 0%, 0.5 = 10%, 1.0 = 50%の確率で向かう
         const effectiveBravery = bravery + braveryBonus;
         const chargeChance = Math.pow(effectiveBravery, 2) * 0.5; // 0～50%
-        const shouldCharge = Math.random() < chargeChance && creature.energy > 40;
+        const shouldCharge =
+          Math.random() < chargeChance && creature.energy > 40;
 
         if (isTargetVulnerable && creatureType === "green") {
           // 無防備なレッドには積極的に攻撃

@@ -6,6 +6,8 @@ export default function SoundControl() {
   const soundManager = SoundManager.getInstance();
   const [isEnabled, setIsEnabled] = useState(soundManager.isEnabled());
   const [volume, setVolume] = useState(soundManager.getVolume());
+  const [isBGMEnabled, setIsBGMEnabled] = useState(soundManager.isBGMEnabled());
+  const [bgmVolume, setBGMVolume] = useState(soundManager.getBGMVolume());
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
@@ -16,6 +18,14 @@ export default function SoundControl() {
     soundManager.setVolume(volume);
   }, [volume, soundManager]);
 
+  useEffect(() => {
+    soundManager.setBGMEnabled(isBGMEnabled);
+  }, [isBGMEnabled, soundManager]);
+
+  useEffect(() => {
+    soundManager.setBGMVolume(bgmVolume);
+  }, [bgmVolume, soundManager]);
+
   const handleToggle = () => {
     setIsEnabled(!isEnabled);
   };
@@ -23,6 +33,15 @@ export default function SoundControl() {
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newVolume = parseFloat(e.target.value);
     setVolume(newVolume);
+  };
+
+  const handleBGMToggle = () => {
+    setIsBGMEnabled(!isBGMEnabled);
+  };
+
+  const handleBGMVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newVolume = parseFloat(e.target.value);
+    setBGMVolume(newVolume);
   };
 
   return (
@@ -51,7 +70,7 @@ export default function SoundControl() {
           {isEnabled && (
             <div className="sound-option">
               <label>
-                <span>音量</span>
+                <span>SE音量</span>
                 <input
                   type="range"
                   min="0"
@@ -62,6 +81,35 @@ export default function SoundControl() {
                   className="volume-slider"
                 />
                 <span className="volume-value">{Math.round(volume * 100)}%</span>
+              </label>
+            </div>
+          )}
+
+          <div className="sound-option">
+            <label>
+              <input
+                type="checkbox"
+                checked={isBGMEnabled}
+                onChange={handleBGMToggle}
+              />
+              <span>BGM を有効化</span>
+            </label>
+          </div>
+
+          {isBGMEnabled && (
+            <div className="sound-option">
+              <label>
+                <span>BGM音量</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={bgmVolume}
+                  onChange={handleBGMVolumeChange}
+                  className="volume-slider"
+                />
+                <span className="volume-value">{Math.round(bgmVolume * 100)}%</span>
               </label>
             </div>
           )}

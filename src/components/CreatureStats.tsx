@@ -30,7 +30,7 @@ export default function CreatureStats({ creatures }: CreatureStatsProps) {
   if (creatures.length === 0) {
     return (
       <div className="creature-stats-panel">
-        <h2>📊 キャラクター性質</h2>
+        <h2>キャラクター性質</h2>
         <div className="no-creatures">キャラクターがいません</div>
       </div>
     );
@@ -43,7 +43,7 @@ export default function CreatureStats({ creatures }: CreatureStatsProps) {
     return (
       <div className="creature-stats-panel">
         <div className="stats-header">
-          <h2>📊 キャラクター性質</h2>
+          <h2>キャラクター性質</h2>
         </div>
         <div className="no-creatures">キャラクターがいません</div>
       </div>

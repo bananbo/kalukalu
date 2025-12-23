@@ -1,0 +1,70 @@
+.youtube-control {
+  position: relative;
+  z-index: 9999;
+}
+
+.youtube-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid #475569;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  color: #cbd5e1;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.youtube-toggle-btn:hover:not(:disabled) {
+  background: rgba(51, 65, 85, 0.9);
+  border-color: #64748b;
+}
+
+.youtube-toggle-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.youtube-toggle-btn.active {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  border-color: #ef4444;
+  color: #fff;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.5);
+}
+
+.youtube-toggle-btn.active .icon-robot {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.youtube-status-text {
+  font-weight: 600;
+  min-width: 28px;
+  text-align: center;
+}
+
+.youtube-error {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  background: rgba(239, 68, 68, 0.95);
+  color: #fff;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  z-index: 10000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}

@@ -17,12 +17,19 @@ class SoundManager {
   private sounds: Map<SoundType, HTMLAudioElement>;
   private enabled: boolean;
   private volume: number;
+  private bgm: HTMLAudioElement | null;
+  private bgmEnabled: boolean;
+  private bgmVolume: number;
 
   private constructor() {
     this.sounds = new Map();
     this.enabled = true;
     this.volume = 0.5;
+    this.bgm = null;
+    this.bgmEnabled = false;
+    this.bgmVolume = 0.3;
     this.loadSounds();
+    this.loadBGM();
   }
 
   static getInstance(): SoundManager {
@@ -49,6 +56,12 @@ class SoundManager {
       audio.volume = this.volume;
       this.sounds.set(soundType, audio);
     });
+  }
+
+  private loadBGM() {
+    this.bgm = new Audio('/sounds/bgm.wav');
+    this.bgm.loop = true;
+    this.bgm.volume = this.bgmVolume;
   }
 
   play(soundType: SoundType, volumeMultiplier: number = 1.0) {
@@ -82,6 +95,44 @@ class SoundManager {
 
   isEnabled(): boolean {
     return this.enabled;
+  }
+
+  // BGM関連のメソッド
+  playBGM() {
+    if (!this.bgm) return;
+
+    this.bgm.play().catch((error) => {
+      console.warn('Failed to play BGM:', error);
+    });
+  }
+
+  pauseBGM() {
+    if (!this.bgm) return;
+    this.bgm.pause();
+  }
+
+  setBGMEnabled(enabled: boolean) {
+    this.bgmEnabled = enabled;
+    if (enabled) {
+      this.playBGM();
+    } else {
+      this.pauseBGM();
+    }
+  }
+
+  isBGMEnabled(): boolean {
+    return this.bgmEnabled;
+  }
+
+  setBGMVolume(volume: number) {
+    this.bgmVolume = Math.max(0, Math.min(1, volume));
+    if (this.bgm) {
+      this.bgm.volume = this.bgmVolume;
+    }
+  }
+
+  getBGMVolume(): number {
+    return this.bgmVolume;
   }
 }
 

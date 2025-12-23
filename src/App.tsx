@@ -5,6 +5,7 @@ import Ranking from "./components/Ranking";
 import CreatureStats from "./components/CreatureStats";
 import AIGeneratorPopup from "./components/AIGeneratorPopup";
 import SoundControl from "./components/SoundControl";
+import YouTubeControl from "./components/YouTubeControl";
 import "./App.css";
 
 function App() {
@@ -112,6 +113,15 @@ function App() {
           配信連動型シミュレーションゲーム
         </h1>
         <div className="header-controls">
+          <button
+            className="header-add-btn"
+            onClick={() => setIsAIPopupOpen(!isAIPopupOpen)}
+            title="キャラクター追加"
+          >
+            <span className="icon icon-pen"></span>
+            <span>ADD</span>
+          </button>
+          <YouTubeControl />
           <SoundControl />
           <div
             className={`connection-status ${

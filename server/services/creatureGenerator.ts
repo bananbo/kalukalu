@@ -599,7 +599,10 @@ export class CreatureGenerator {
     const balancedAttributes = this.balanceAttributes(attributes);
 
     // 視野を生成（種族に基づく）
-    const vision = this.generateVision(species, balancedAttributes.intelligence);
+    const vision = this.generateVision(
+      species,
+      balancedAttributes.intelligence
+    );
 
     // ランダムなtypeIDを生成
     const typeId = `type-${Date.now().toString(36)}-${Math.random()
@@ -722,10 +725,7 @@ export class CreatureGenerator {
       const angleLimit = maxAngle * intelligenceFactor;
       const rangeLimit = maxRange * intelligenceFactor;
       return {
-        angle: Math.min(
-          maxAngle,
-          angleLimit * (0.9 + Math.random() * 0.2)
-        ),
+        angle: Math.min(maxAngle, angleLimit * (0.9 + Math.random() * 0.2)),
         range: Math.max(30, rangeLimit * (0.9 + Math.random() * 0.2)),
       };
     }
@@ -738,7 +738,10 @@ export class CreatureGenerator {
       const angleLimit = (Math.PI * 0.4 + maxAngle * 0.6) * intelligenceFactor;
       const rangeLimit = maxRange * intelligenceFactor;
       return {
-        angle: Math.max(Math.PI * 0.3, angleLimit * (0.9 + Math.random() * 0.2)),
+        angle: Math.max(
+          Math.PI * 0.3,
+          angleLimit * (0.9 + Math.random() * 0.2)
+        ),
         range: Math.max(100, rangeLimit * (0.9 + Math.random() * 0.2)),
       };
     }
