@@ -141,43 +141,162 @@ export class CreatureGenerator {
     }
   }
 
-  async generateFromComment(comment: {
-    author: string;
-    message: string;
-    timestamp: Date;
-  }): Promise<Creature> {
+  /**
+   * コメントを分析して、キャラ生成リクエストかどうか、どの種族かを判定
+   */
+  analyzeComment(message: string): {
+    isCreatureRequest: boolean;
+    requestsRed: boolean;
+    keywords: string[];
+  } {
+    const lowerMessage = message.toLowerCase();
+
+    // キャラ生成キーワード
+    const creatureKeywords = [
+      "キャラ生成",
+      "キャラ作成",
+      "生成",
+      "作成",
+      "作って",
+      "つくって",
+      "create",
+      "generate",
+    ];
+
+    // レッド族（攻撃キャラ）キーワード
+    const redKeywords = [
+      "レッド",
+      "赤",
+      "鬼",
+      "攻撃キャラ",
+      "敵キャラ",
+      "敵",
+      "ボス",
+      "モンスター",
+      "捕食者",
+      "ハンター",
+      "red",
+      "enemy",
+      "boss",
+      "predator",
+      "hunter",
+      "攻撃側",
+      "追いかける",
+      "追う側",
+    ];
+
+    const foundKeywords: string[] = [];
+
+    // キャラ生成リクエストかチェック
+    const isCreatureRequest = creatureKeywords.some((keyword) => {
+      if (lowerMessage.includes(keyword.toLowerCase())) {
+        foundKeywords.push(keyword);
+        return true;
+      }
+      return false;
+    });
+
+    // レッド族を要求しているかチェック
+    const requestsRed = redKeywords.some((keyword) => {
+      if (lowerMessage.includes(keyword.toLowerCase())) {
+        foundKeywords.push(keyword);
+        return true;
+      }
+      return false;
+    });
+
+    return {
+      isCreatureRequest,
+      requestsRed,
+      keywords: foundKeywords,
+    };
+  }
+
+  /**
+   * コメントと現在の状況から、生成すべき種族を決定
+   */
+  determineSpecies(
+    message: string,
+    currentRedCount: number,
+    maxRedForUserCreation: number = 3
+  ): {
+    species: "グリーン族" | "レッド族";
+    reason: string;
+  } {
+    const analysis = this.analyzeComment(message);
+
+    // レッド族を要求していて、かつ現在のレッド数が上限未満の場合のみレッド族
+    if (analysis.requestsRed && currentRedCount < maxRedForUserCreation) {
+      return {
+        species: "レッド族",
+        reason: `レッド族キーワード検出 (${analysis.keywords.join(
+          ", "
+        )}), 現在${currentRedCount}体 < 上限${maxRedForUserCreation}体`,
+      };
+    }
+
+    // それ以外はグリーン族
+    if (analysis.requestsRed && currentRedCount >= maxRedForUserCreation) {
+      return {
+        species: "グリーン族",
+        reason: `レッド族要求あるが上限到達 (現在${currentRedCount}体 >= 上限${maxRedForUserCreation}体)`,
+      };
+    }
+
+    return {
+      species: "グリーン族",
+      reason: "デフォルト（グリーン族）",
+    };
+  }
+
+  async generateFromComment(
+    comment: {
+      author: string;
+      message: string;
+      timestamp: Date;
+    },
+    options?: {
+      species?: "グリーン族" | "レッド族";
+    }
+  ): Promise<Creature> {
     // デバッグモードまたはGeminiが初期化されていない場合
     if (this.debugMode || !this.genAI) {
-      return this.generateDebugCreature(comment);
+      return this.generateDebugCreature(comment, options?.species);
     }
 
     try {
-      return await this.generateWithAI(comment);
+      return await this.generateWithAI(comment, options?.species);
     } catch (error) {
       console.error("AI generation failed, falling back to debug mode:", error);
-      return this.generateDebugCreature(comment);
+      return this.generateDebugCreature(comment, options?.species);
     }
   }
 
   // AI生成を強制的に使用（テスト用）
-  async generateWithAIForced(comment: {
-    author: string;
-    message: string;
-    timestamp: Date;
-  }): Promise<Creature> {
+  async generateWithAIForced(
+    comment: {
+      author: string;
+      message: string;
+      timestamp: Date;
+    },
+    species?: "グリーン族" | "レッド族"
+  ): Promise<Creature> {
     if (!this.genAI) {
       throw new Error(
         "Gemini API is not initialized. Please set GEMINI_API_KEY in .env.local"
       );
     }
-    return this.generateWithAI(comment);
+    return this.generateWithAI(comment, species);
   }
 
-  private async generateWithAI(comment: {
-    author: string;
-    message: string;
-    timestamp: Date;
-  }): Promise<Creature> {
+  private async generateWithAI(
+    comment: {
+      author: string;
+      message: string;
+      timestamp: Date;
+    },
+    species?: "グリーン族" | "レッド族"
+  ): Promise<Creature> {
     const prompt = this.buildPrompt(comment);
 
     const model = this.genAI!.getGenerativeModel({
@@ -200,7 +319,7 @@ export class CreatureGenerator {
     }
 
     const aiParams: AIGeneratedCreatureParams = JSON.parse(content);
-    return this.createCreatureFromAI(aiParams, comment);
+    return this.createCreatureFromAI(aiParams, comment, species);
   }
 
   private buildPrompt(comment: { author: string; message: string }): string {
@@ -304,10 +423,14 @@ export class CreatureGenerator {
 
   private createCreatureFromAI(
     aiParams: AIGeneratedCreatureParams,
-    comment: { author: string; message: string; timestamp: Date }
+    comment: { author: string; message: string; timestamp: Date },
+    speciesParam?: "グリーン族" | "レッド族"
   ): Creature {
-    // ユーザーが作成するのは常にグリーン族
-    const species = "グリーン族";
+    // 種族を決定（指定があればそれを使用、なければグリーン族）
+    const species = speciesParam || "グリーン族";
+
+    // パラメータの合計を調整（バランス調整）- 全属性MAXを防ぐ
+    const balancedAttributes = this.balanceAttributes(aiParams.attributes);
 
     const position = {
       x: Math.random() * 800,
@@ -315,8 +438,8 @@ export class CreatureGenerator {
     };
 
     const velocity = {
-      x: (Math.random() - 0.5) * aiParams.attributes.speed * 0.5,
-      y: (Math.random() - 0.5) * aiParams.attributes.speed * 0.5,
+      x: (Math.random() - 0.5) * balancedAttributes.speed * 0.5,
+      y: (Math.random() - 0.5) * balancedAttributes.speed * 0.5,
     };
 
     // ランダムなtypeIDを生成（8文字の英数字）
@@ -324,13 +447,19 @@ export class CreatureGenerator {
       .toString(36)
       .substr(2, 5)}`;
 
+    // グリーン族はティー系の名前を使用
+    const creatureName =
+      species === "グリーン族"
+        ? this.generateName(comment.message, comment.author, balancedAttributes)
+        : aiParams.name;
+
     return {
       id: `creature-${Date.now()}-${Math.random()
         .toString(36)
         .substr(2, 9)}-${performance.now()}`,
-      name: aiParams.name,
+      name: creatureName,
       typeId: typeId, // キャラクタータイプID
-      attributes: aiParams.attributes,
+      attributes: balancedAttributes,
       appearance: aiParams.appearance,
       behavior: aiParams.behavior,
       traits: aiParams.traits,
@@ -362,16 +491,19 @@ export class CreatureGenerator {
     };
   }
 
-  private generateDebugCreature(comment: {
-    author: string;
-    message: string;
-    timestamp: Date;
-  }): Creature {
+  private generateDebugCreature(
+    comment: {
+      author: string;
+      message: string;
+      timestamp: Date;
+    },
+    speciesParam?: "グリーン族" | "レッド族"
+  ): Creature {
     // コメントから簡易的にパラメータを抽出（デバッグ用）
     const message = comment.message.toLowerCase();
 
-    // ユーザーが作成するのは常にグリーン族
-    const species = "グリーン族";
+    // 種族を決定（指定があればそれを使用、なければグリーン族）
+    const species = speciesParam || "グリーン族";
 
     // キーワードベースの簡易解析
     const keywords = {
@@ -390,8 +522,14 @@ export class CreatureGenerator {
       social: this.calculateAttribute(message, keywords.social),
     };
 
-    // グリーン族は小さめ（サイズ 1-3）
-    attributes.size = Math.min(3, Math.max(1, attributes.size - 3));
+    // レッド族は大きめ、グリーン族は小さめ
+    if (species === "レッド族") {
+      attributes.size = Math.min(10, Math.max(5, attributes.size + 2));
+      attributes.strength = Math.min(10, Math.max(5, attributes.strength + 2));
+    } else {
+      // グリーン族は小さめ（サイズ 1-3）
+      attributes.size = Math.min(3, Math.max(1, attributes.size - 3));
+    }
 
     // 外見の決定
     const bodyTypes: Creature["appearance"]["bodyType"][] = [
@@ -410,8 +548,8 @@ export class CreatureGenerator {
 
     const appearance: Creature["appearance"] = {
       bodyType: bodyTypes[Math.floor(Math.random() * bodyTypes.length)],
-      primaryColor: this.generateColor(message),
-      secondaryColor: this.generateColor(message + "secondary"),
+      primaryColor: this.generateColor(message, species),
+      secondaryColor: this.generateColor(message + "secondary", species),
       hasEyes: Math.random() > 0.3,
       hasTentacles:
         message.includes("触手") ||
@@ -472,7 +610,11 @@ export class CreatureGenerator {
       id: `creature-${Date.now()}-${Math.random()
         .toString(36)
         .substr(2, 9)}-${performance.now()}`,
-      name: this.generateName(comment.message, comment.author),
+      name: this.generateName(
+        comment.message,
+        comment.author,
+        balancedAttributes
+      ),
       typeId: typeId, // キャラクタータイプID
       attributes: balancedAttributes,
       appearance,
@@ -519,15 +661,26 @@ export class CreatureGenerator {
     return Math.min(10, Math.max(0, score + Math.random() * 2 - 1));
   }
 
-  private generateColor(seed: string): string {
+  private generateColor(seed: string, species?: string): string {
     // シード文字列からハッシュを生成
     let hash = 0;
     for (let i = 0; i < seed.length; i++) {
       hash = seed.charCodeAt(i) + ((hash << 5) - hash);
     }
 
-    // ハッシュから色を生成
-    const hue = Math.abs(hash % 360);
+    // 種族に応じた色相を設定
+    let hue: number;
+    if (species === "グリーン族") {
+      // グリーン族は緑系（80-160度）
+      hue = 80 + (Math.abs(hash) % 80);
+    } else if (species === "レッド族") {
+      // レッド族は赤系（-30【30度）
+      hue = (Math.abs(hash) % 60) - 30;
+      if (hue < 0) hue += 360;
+    } else {
+      // その他はランダム
+      hue = Math.abs(hash % 360);
+    }
     const saturation = 60 + (Math.abs(hash) % 30);
     const lightness = 50 + (Math.abs(hash >> 8) % 20);
 
@@ -576,7 +729,11 @@ export class CreatureGenerator {
     };
   }
 
-  private generateName(message: string, author: string): string {
+  private generateName(
+    message: string,
+    author: string,
+    attributes?: Creature["attributes"]
+  ): string {
     // ティー系の名前リスト（グリーン族用）
     const teaNames = [
       "アールグレイ",
@@ -609,9 +766,35 @@ export class CreatureGenerator {
       "ティーバッグ",
     ];
 
+    // 属性に応じた形容詞
+    const attributeAdjectives: { [key: string]: string[] } = {
+      speed: ["稲妻", "電光", "疑似", "スピード", "韋駄天"],
+      size: ["巨大", "ビッグ", "メガ", "ジャンボ", "デカ"],
+      strength: ["剛力", "パワー", "最強", "マッチョ", "親方"],
+      intelligence: ["賢者", "天才", "戦略", "知恵", "インテリ"],
+      social: ["群れ", "仲良し", "チーム", "絆", "コミュ"],
+    };
+
     // メッセージと作者名からハッシュを生成してランダムに選択
     const hash = this.simpleHash(message + author);
     const baseName = teaNames[hash % teaNames.length];
+
+    // 属性があれば最も高い属性の形容詞を追加
+    if (attributes) {
+      const attrEntries = Object.entries(attributes) as [string, number][];
+      const maxAttr = attrEntries.reduce((max, curr) =>
+        curr[1] > max[1] ? curr : max
+      );
+      const [maxAttrName, maxAttrValue] = maxAttr;
+
+      // 属性が7以上なら形容詞を追加
+      if (maxAttrValue >= 7 && attributeAdjectives[maxAttrName]) {
+        const adjectives = attributeAdjectives[maxAttrName];
+        const adjHash = this.simpleHash(message + author + "adj");
+        const adjective = adjectives[adjHash % adjectives.length];
+        return `${adjective}${baseName}`;
+      }
+    }
 
     return baseName;
   }

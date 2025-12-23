@@ -252,4 +252,7 @@ export interface Creature {
   lastAttackedBy: string | null; // 最後に攻撃してきた相手のID
   lastAttackedAt: number; // 最後に攻撃された時刻（フレーム数）
   isCounterAttacking: boolean; // 反撃中（回避せず立ち向かっている）
+  // 攻撃者追跡（グリーン用）
+  trackedAttackerPos?: { x: number; y: number }; // 攻撃者の最後の位置
+  trackingUntil?: number; // 追跡が有効なフレーム
 }

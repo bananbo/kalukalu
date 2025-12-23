@@ -134,45 +134,6 @@ export default function CreatureStats({ creatures }: CreatureStatsProps) {
           </div>
         </div>
 
-        {/* 行動プログラム */}
-        <div className="stats-section">
-          <h3>行動プログラム</h3>
-          <div className="behavior-grid">
-            <BehaviorItem
-              label="仲間接近"
-              value={creature.behaviorProgram.approachAlly}
-            />
-            <BehaviorItem
-              label="敵接近"
-              value={creature.behaviorProgram.approachEnemy}
-            />
-            <BehaviorItem
-              label="逃走傾向"
-              value={creature.behaviorProgram.fleeWhenWeak}
-            />
-            <BehaviorItem
-              label="攻撃性"
-              value={creature.behaviorProgram.aggressiveness}
-            />
-            <BehaviorItem
-              label="好奇心"
-              value={creature.behaviorProgram.curiosity}
-            />
-            <BehaviorItem
-              label="縄張り"
-              value={creature.behaviorProgram.territoriality}
-            />
-            <BehaviorItem
-              label="背後攻撃"
-              value={creature.behaviorProgram.stealthAttack}
-            />
-            <BehaviorItem
-              label="反撃"
-              value={creature.behaviorProgram.counterAttack}
-            />
-          </div>
-        </div>
-
         {/* ステータス */}
         <div className="stats-section">
           <h3>ステータス</h3>
@@ -239,24 +200,6 @@ function StatBar({
           style={{ width: `${percentage}%`, backgroundColor: color }}
         />
       </div>
-    </div>
-  );
-}
-
-// 行動プログラム項目
-function BehaviorItem({ label, value }: { label: string; value: number }) {
-  const getColor = (val: number) => {
-    if (val > 0.6) return "#4ade80";
-    if (val > 0.3) return "#fbbf24";
-    return "#94a3b8";
-  };
-
-  return (
-    <div className="behavior-item">
-      <span className="behavior-label">{label}</span>
-      <span className="behavior-value" style={{ color: getColor(value) }}>
-        {value.toFixed(2)}
-      </span>
     </div>
   );
 }

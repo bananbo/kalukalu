@@ -102,8 +102,9 @@ export function calculateIntelligentMovement(
     const dist = Math.sqrt(dx * dx + dy * dy);
 
     if (dist > 10) {
-      // 撤退中は速度を上げて逃げる
-      const retreatSpeed = baseSpeed * 1.5;
+      // 撤退中は速度を上げて逃げる（ただしmaxSpeedを超えない）
+      const maxSpeed = creature.attributes.speed * 0.15;
+      const retreatSpeed = Math.min(baseSpeed * 1.5, maxSpeed);
       return {
         x: (dx / dist) * retreatSpeed,
         y: (dy / dist) * retreatSpeed,
@@ -125,23 +126,65 @@ export function calculateIntelligentMovement(
       const dist = Math.sqrt(dx * dx + dy * dy);
 
       if (dist > 0) {
-        const bravery = program.bravery ?? 0.5;
-        const counterAttack = program.counterAttack ?? 0.1;
-
-        // 勇敢さと反撃傾向に基づいて行動を決定
-        if (bravery > 0.6 && counterAttack > 0.3 && creature.energy > 50) {
-          // 勇敢な性格は反撃
-          const counterForce = bravery * 0.8;
-          forceX += (dx / dist) * counterForce;
-          forceY += (dy / dist) * counterForce;
+        if (myType === "red") {
+          // レッド族は反撃を受けても少しひるむだけで追跡継続
+          // 攻撃直後の短い時間だけわずかに後退（ひるみ）
+          const timeSinceAttack = currentFrame - (creature.lastAttackedAt || 0);
+          if (timeSinceAttack < 30) {
+            // 0.5秒間ひるむ
+            const flinchForce = 0.5 * (1 - timeSinceAttack / 30); // 徐々に弱まる
+            forceX -= (dx / dist) * flinchForce;
+            forceY -= (dy / dist) * flinchForce;
+          }
         } else {
-          // 臆病な性格は逃げる
-          const panicThreshold = program.panicThreshold ?? 0.3;
-          const fleeForce = 1.0 - bravery + panicThreshold;
-          forceX -= (dx / dist) * fleeForce;
-          forceY -= (dy / dist) * fleeForce;
+          // グリーン・その他は従来通りの反応
+          const bravery = program.bravery ?? 0.5;
+          const counterAttack = program.counterAttack ?? 0.1;
+
+          // 勇敢さと反撃傾向に基づいて行動を決定
+          if (bravery > 0.6 && counterAttack > 0.3 && creature.energy > 50) {
+            // 勇敢な性格は反撃
+            const counterForce = bravery * 0.8;
+            forceX += (dx / dist) * counterForce;
+            forceY += (dy / dist) * counterForce;
+          } else {
+            // 臆病な性格は逃げる
+            const panicThreshold = program.panicThreshold ?? 0.3;
+            const fleeForce = 1.0 - bravery + panicThreshold;
+            forceX -= (dx / dist) * fleeForce;
+            forceY -= (dy / dist) * fleeForce;
+          }
         }
       }
+    }
+  }
+
+  // ===== グリーンの攻撃者追跡（視野外でも攻撃者の位置がわかる） =====
+  // 追跡中の攻撃者への逃走力を後で適用するために保存
+  let trackedThreatForceX = 0;
+  let trackedThreatForceY = 0;
+  let trackedThreatDist = Infinity;
+  let trackedThreatDirX = 0;
+  let trackedThreatDirY = 0;
+  if (
+    myType === "green" &&
+    creature.trackedAttackerPos &&
+    creature.trackingUntil &&
+    currentFrame < creature.trackingUntil
+  ) {
+    const trackedDx = creature.trackedAttackerPos.x - creature.position.x;
+    const trackedDy = creature.trackedAttackerPos.y - creature.position.y;
+    trackedThreatDist = Math.sqrt(
+      trackedDx * trackedDx + trackedDy * trackedDy
+    );
+
+    if (trackedThreatDist > 0) {
+      // 追跡中の攻撃者から逃げる（ただし視野内の脅威より弱い力）
+      const trackFleeForce = 0.4;
+      trackedThreatForceX = -(trackedDx / trackedThreatDist) * trackFleeForce;
+      trackedThreatForceY = -(trackedDy / trackedThreatDist) * trackFleeForce;
+      trackedThreatDirX = trackedDx / trackedThreatDist;
+      trackedThreatDirY = trackedDy / trackedThreatDist;
     }
   }
 
@@ -157,6 +200,18 @@ export function calculateIntelligentMovement(
   let nearestThreatDist = Infinity;
   let nearestThreatX = 0;
   let nearestThreatY = 0;
+
+  // 追跡脅威を適用（視野外でも記憶している攻撃者）
+  if (trackedThreatDist < Infinity) {
+    forceX += trackedThreatForceX;
+    forceY += trackedThreatForceY;
+    // 追跡脅威を最も近い脅威として初期化
+    if (trackedThreatDist < nearestThreatDist) {
+      nearestThreatDist = trackedThreatDist;
+      nearestThreatX = trackedThreatDirX;
+      nearestThreatY = trackedThreatDirY;
+    }
+  }
 
   // ===== グリーン系の仲間認識 =====
   let greenAlliesInfo: ReturnType<typeof getGreenAlliesInfo> | null = null;
@@ -211,16 +266,24 @@ export function calculateIntelligentMovement(
   for (const other of allCreatures) {
     if (other.id === creature.id) continue;
 
-    // 視野内チェック
-    if (!isInFieldOfView(creature, other.position.x, other.position.y)) {
-      continue;
-    }
-
     const dx = other.position.x - creature.position.x;
     const dy = other.position.y - creature.position.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
 
     if (distance === 0) continue;
+
+    // 至近距離（衝突距離）の敵は視野に関係なく検知（近接感知）
+    const collisionDistance =
+      (creature.attributes.size + other.attributes.size) * 3;
+    const isInProximity = distance < collisionDistance;
+
+    // 視野内チェック（ただし至近距離は例外）
+    if (
+      !isInProximity &&
+      !isInFieldOfView(creature, other.position.x, other.position.y)
+    ) {
+      continue;
+    }
 
     const dirX = dx / distance;
     const dirY = dy / distance;
@@ -491,8 +554,8 @@ export function calculateIntelligentMovement(
           obstacleAwareness *
           0.8;
 
-        if (obstacleStrategy === "use-as-cover" && nearestThreatDist < 100) {
-          // 脅威がいる時は障害物に隠れる
+        if (obstacleStrategy === "use-as-cover" && nearestThreatDist < 150) {
+          // 脅威がいる時は障害物に隠れる（より積極的に）
           const threatDirX = nearestThreatX;
           const threatDirY = nearestThreatY;
 
@@ -506,8 +569,22 @@ export function calculateIntelligentMovement(
           );
 
           if (toCoverDist > 10) {
-            forceX += (toCoverX / toCoverDist) * avoidStrength * 0.5;
-            forceY += (toCoverY / toCoverDist) * avoidStrength * 0.5;
+            // 脅威が近いほど強い力で壁に隠れる
+            const urgency = Math.max(0.5, (150 - nearestThreatDist) / 150);
+            const coverForce = avoidStrength * urgency * 1.2;
+            forceX += (toCoverX / toCoverDist) * coverForce;
+            forceY += (toCoverY / toCoverDist) * coverForce;
+          }
+        } else if (
+          obstacleStrategy === "use-as-cover" &&
+          nearestThreatDist === Infinity
+        ) {
+          // 脅威がいない時でも、近くの障害物の近くに留まろうとする
+          if (distance < obstacleRadius + 30) {
+            // 障害物のすぐ近くにいる時は離れない
+            const stayNearForce = 0.1;
+            forceX -= (dx / distance) * stayNearForce;
+            forceY -= (dy / distance) * stayNearForce;
           }
         } else {
           // 通常は障害物を避ける
@@ -534,11 +611,12 @@ export function calculateIntelligentMovement(
     forceY += Math.sin(newAngle) * driftStrength;
   }
 
-  // ===== 速度制限 =====
+  // ===== 速度制限（キャラのmaxSpeedを超えないようにする） =====
+  const maxSpeed = creature.attributes.speed * 0.15;
   const finalMagnitude = Math.sqrt(forceX * forceX + forceY * forceY);
-  if (finalMagnitude > baseSpeed) {
-    forceX = (forceX / finalMagnitude) * baseSpeed;
-    forceY = (forceY / finalMagnitude) * baseSpeed;
+  if (finalMagnitude > maxSpeed) {
+    forceX = (forceX / finalMagnitude) * maxSpeed;
+    forceY = (forceY / finalMagnitude) * maxSpeed;
   }
 
   return { x: forceX, y: forceY };

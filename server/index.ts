@@ -24,12 +24,32 @@ const wss = new WebSocketServer({ server, path: "/ws" });
 const creatureGenerator = new CreatureGenerator();
 let youtubeLiveChat: YouTubeLiveChat | null = null;
 
+// 現在の生物数を追跡（クライアントから更新される）
+let currentCreatureCounts = {
+  red: 0,
+  green: 0,
+  total: 0,
+};
+
 // WebSocket接続管理
 wss.on("connection", (ws) => {
   console.log("Client connected");
 
   ws.on("message", (message) => {
-    console.log("Received:", message.toString());
+    try {
+      const data = JSON.parse(message.toString());
+      // クライアントから生物数の更新を受け取る
+      if (data.type === "creatureCountUpdate") {
+        currentCreatureCounts = {
+          red: data.redCount || 0,
+          green: data.greenCount || 0,
+          total: data.totalCount || 0,
+        };
+        console.log("Creature counts updated:", currentCreatureCounts);
+      }
+    } catch (e) {
+      console.log("Received non-JSON message:", message.toString());
+    }
   });
 
   ws.on("close", () => {
@@ -57,25 +77,87 @@ app.post("/api/youtube/start", async (req, res) => {
 
     youtubeLiveChat = new YouTubeLiveChat(videoId);
 
-    // コメント受信時の処理
-    youtubeLiveChat.on("comment", async (comment) => {
-      console.log("New comment:", comment);
+    // コメントキュー
+    const commentQueue: any[] = [];
 
-      // 「キャラ生成」というキーワードが含まれているかチェック
-      if (!comment.message.includes("キャラ生成")) {
-        console.log("Comment does not contain 'キャラ生成', skipping...");
+    // コメント受信時の処理（キューに追加）
+    youtubeLiveChat.on("comment", (comment) => {
+      console.log("Buffered comment:", comment.message);
+      commentQueue.push(comment);
+    });
+
+    // 10秒ごとにキューを処理して1つだけ生成
+    const processInterval = setInterval(async () => {
+      if (commentQueue.length === 0) return;
+
+      console.log(`Processing queue: ${commentQueue.length} comments`);
+
+      // 1. キャラ生成リクエストのみをフィルタリング
+      const validRequests = [];
+      for (const comment of commentQueue) {
+        const analysis = creatureGenerator.analyzeComment(comment.message);
+        if (analysis.isCreatureRequest) {
+          validRequests.push(comment);
+        }
+      }
+
+      if (validRequests.length === 0) {
+        // 有効なリクエストがなければキューをクリアして終了
+        commentQueue.length = 0;
         return;
       }
 
-      // LLMでコメントを解析して生物を生成
-      const creature = await creatureGenerator.generateFromComment(comment);
+      // 2. 抽選ロジック（スーパーチャット優先 or ランダム）
+      // TODO: スーパーチャット情報の取得が可能ならここで優先度付けを行う
+      // 現状はランダムに1つ選択
+      const selectedComment =
+        validRequests[Math.floor(Math.random() * validRequests.length)];
 
-      // 全クライアントに新しい生物を送信
-      broadcast({
-        type: "newCreature",
-        creature,
-      });
-    });
+      console.log("Selected comment for generation:", selectedComment.message);
+
+      // 3. 選択されたコメントからキャラクター生成
+      try {
+        // メッセージを30文字に制限
+        const truncatedMessage = selectedComment.message.slice(0, 30);
+
+        // 種族を決定
+        const speciesDecision = creatureGenerator.determineSpecies(
+          truncatedMessage,
+          currentCreatureCounts.red,
+          3
+        );
+        console.log("Species decision:", speciesDecision);
+
+        const truncatedComment = {
+          ...selectedComment,
+          message: truncatedMessage,
+        };
+
+        // LLMでコメントを解析して生物を生成
+        const creature = await creatureGenerator.generateFromComment(
+          truncatedComment,
+          { species: speciesDecision.species }
+        );
+
+        // 全クライアントに新しい生物を送信
+        broadcast({
+          type: "newCreature",
+          creature,
+        });
+      } catch (error) {
+        console.error("Error generating creature from batched comment:", error);
+      }
+
+      // 4. キューをクリア（選ばれなかったコメントは破棄）
+      commentQueue.length = 0;
+    }, 10000); // 10秒間隔
+
+    // チャット停止時にインターバルもクリア
+    const originalStop = youtubeLiveChat.stop.bind(youtubeLiveChat);
+    youtubeLiveChat.stop = () => {
+      clearInterval(processInterval);
+      originalStop();
+    };
 
     await youtubeLiveChat.start();
     res.json({ success: true, message: "YouTube Live Chat started" });
@@ -122,12 +204,36 @@ app.post("/api/youtube/auto-start", async (req, res) => {
     youtubeLiveChat.on("comment", async (comment) => {
       console.log("New comment:", comment);
 
-      if (!comment.message.includes("キャラ生成")) {
-        console.log("Comment does not contain 'キャラ生成', skipping...");
+      // コメントを分析
+      const analysis = creatureGenerator.analyzeComment(comment.message);
+      console.log("Comment analysis:", analysis);
+
+      // キャラ生成リクエストでなければスキップ
+      if (!analysis.isCreatureRequest) {
+        console.log("Not a creature request, skipping...");
         return;
       }
 
-      const creature = await creatureGenerator.generateFromComment(comment);
+      // メッセージを30文字に制限
+      const truncatedMessage = comment.message.slice(0, 30);
+
+      // 種族を決定（レッド族は3体未満の時のみ生成可能）
+      const speciesDecision = creatureGenerator.determineSpecies(
+        truncatedMessage,
+        currentCreatureCounts.red,
+        3 // レッド族の上限
+      );
+      console.log("Species decision:", speciesDecision);
+
+      const truncatedComment = {
+        ...comment,
+        message: truncatedMessage,
+      };
+
+      const creature = await creatureGenerator.generateFromComment(
+        truncatedComment,
+        { species: speciesDecision.species }
+      );
 
       broadcast({
         type: "newCreature",
@@ -212,7 +318,7 @@ app.post("/api/creature/create", async (req, res) => {
 // AI生成で生物を作成（テスト用）
 app.post("/api/creature/create-ai", async (req, res) => {
   try {
-    const { author, message } = req.body;
+    const { author, message, species } = req.body;
 
     if (!author || !message) {
       return res.status(400).json({
@@ -221,6 +327,10 @@ app.post("/api/creature/create-ai", async (req, res) => {
       });
     }
 
+    // speciesがレッド族の場合はバリデーションが必要（クライアント側でチェック）
+    const validSpecies: ("グリーン族" | "レッド族") | undefined =
+      species === "レッド族" ? "レッド族" : undefined;
+
     const comment = {
       author,
       message,
@@ -228,7 +338,10 @@ app.post("/api/creature/create-ai", async (req, res) => {
     };
 
     // AI生成を強制使用
-    const creature = await creatureGenerator.generateWithAIForced(comment);
+    const creature = await creatureGenerator.generateWithAIForced(
+      comment,
+      validSpecies
+    );
 
     broadcast({
       type: "newCreature",
@@ -293,7 +406,7 @@ app.post("/api/creature/generate-green", async (req, res) => {
 // AI生成のプレビュー（追加せずにパラメータだけ確認）
 app.post("/api/creature/preview-ai", async (req, res) => {
   try {
-    const { author, message } = req.body;
+    const { author, message, species } = req.body;
 
     if (!author || !message) {
       return res.status(400).json({
@@ -302,6 +415,9 @@ app.post("/api/creature/preview-ai", async (req, res) => {
       });
     }
 
+    const validSpecies: ("グリーン族" | "レッド族") | undefined =
+      species === "レッド族" ? "レッド族" : undefined;
+
     const comment = {
       author,
       message,
@@ -309,7 +425,10 @@ app.post("/api/creature/preview-ai", async (req, res) => {
     };
 
     // AI生成を強制使用（追加はしない）
-    const creature = await creatureGenerator.generateWithAIForced(comment);
+    const creature = await creatureGenerator.generateWithAIForced(
+      comment,
+      validSpecies
+    );
 
     res.json({ success: true, creature });
   } catch (error) {

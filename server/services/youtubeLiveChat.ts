@@ -14,9 +14,8 @@ export class YouTubeLiveChat extends EventEmitter {
   private pollingInterval: NodeJS.Timeout | null = null;
   private nextPageToken: string | undefined;
   // YouTube API Quota対策: 1日10,000ユニット制限を守るため、
-  // 1リクエスト5ユニット消費 * 24時間稼働の場合、約43.2秒以上の間隔が必要
-  private readonly MIN_POLLING_INTERVAL = 45000;
-
+  // 1リクエスト5ユニット消費  private nextPollTime: number = 0;
+  private readonly MIN_POLLING_INTERVAL = 5000; // 5 seconds (Cost: ~7200 quota for 2 hours)
   constructor(videoId: string) {
     super();
     this.videoId = videoId;

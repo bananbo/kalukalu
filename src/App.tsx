@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Creature } from "./types/creature";
+import { useState, useEffect, useRef } from "react";
+import { Creature, getSpeciesType } from "./types/creature";
 import EcosystemCanvas from "./components/EcosystemCanvas";
 import Ranking from "./components/Ranking";
 import CreatureStats from "./components/CreatureStats";
@@ -8,10 +8,31 @@ import "./App.css";
 
 function App() {
   const [creatures, setCreatures] = useState<Creature[]>([]);
-  const [_ws, setWs] = useState<WebSocket | null>(null); // WebSocket参照を保持
+  const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isAIPopupOpen, setIsAIPopupOpen] = useState(false);
+
+  // 生物数が変わったらサーバーに通知
+  useEffect(() => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      const redCount = creatures.filter(
+        (c) => getSpeciesType(c.species) === "red"
+      ).length;
+      const greenCount = creatures.filter(
+        (c) => getSpeciesType(c.species) === "green"
+      ).length;
+
+      wsRef.current.send(
+        JSON.stringify({
+          type: "creatureCountUpdate",
+          redCount,
+          greenCount,
+          totalCount: creatures.length,
+        })
+      );
+    }
+  }, [creatures]);
 
   // 初期種族をロード
   useEffect(() => {
@@ -64,7 +85,7 @@ function App() {
       console.error("WebSocket error:", error);
     };
 
-    setWs(websocket);
+    wsRef.current = websocket;
 
     return () => {
       websocket.close();
@@ -85,7 +106,9 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Kalukalu - 生態系シミュレーション</h1>
+        <h1>
+          <span className="app-logo"></span> Kalukalu - 生態系シミュレーション
+        </h1>
         <div
           className={`connection-status ${
             isConnected ? "connected" : "disconnected"

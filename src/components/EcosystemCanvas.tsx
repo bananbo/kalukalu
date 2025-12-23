@@ -5,6 +5,7 @@ import {
   Obstacle,
   getFoodChainTier,
   getSpeciesType,
+  isInFieldOfView,
 } from "../types/creature";
 import CreatureSVG from "./CreatureSVG";
 import {
@@ -36,6 +37,8 @@ const MAX_PLANTS = 50;
 const HUNGER_RATE = 0.015; // 空腹によるエネルギー減少率（ゆっくり）
 const REPLENISH_COOLDOWN = 300; // 補充のクールダウン（フレーム数、約5秒）
 const RED_REPLENISH_INTERVAL = 36000; // レッド族補充間隔（10分 = 600秒 = 36000フレーム）
+const RED_SPAWN_WHEN_GREEN_MANY = 1800; // グリーンが多い時のレッド追加間隔（30秒）
+const GREEN_THRESHOLD_FOR_RED_SPAWN = 6; // この数以上でレッド追加
 
 interface PointNotification {
   id: string;
@@ -44,6 +47,15 @@ interface PointNotification {
   amount: number;
   createdAt: number;
 }
+
+// 消滅アニメーション中のキャラクター
+interface DyingCreature {
+  creature: Creature;
+  dieAt: number;
+}
+
+// 登場アニメーション中のキャラクターID
+type SpawningCreatureId = string;
 
 const EcosystemCanvas = ({
   creatures,
@@ -61,6 +73,10 @@ const EcosystemCanvas = ({
   const [pointNotifications, setPointNotifications] = useState<
     PointNotification[]
   >([]);
+  const [dyingCreatures, setDyingCreatures] = useState<DyingCreature[]>([]);
+  const [spawningIds, setSpawningIds] = useState<Set<SpawningCreatureId>>(
+    new Set()
+  );
   const plantsRef = useRef<Plant[]>([]);
   const obstaclesRef = useRef<Obstacle[]>([]);
   const creaturesRef = useRef<Creature[]>(creatures);
@@ -69,6 +85,81 @@ const EcosystemCanvas = ({
     red: 0,
     green: 0,
   });
+  const frameCountRef = useRef<number>(0);
+
+  // 行動状態を判定する関数
+  const getBehaviorState = (
+    creature: Creature,
+    allCreatures: Creature[]
+  ):
+    | "chasing"
+    | "fleeing"
+    | "eating"
+    | "counter"
+    | "vulnerable"
+    | "retreating"
+    | "idle" => {
+    const speciesType = getSpeciesType(creature.species);
+
+    // 無防備状態
+    if (creature.isVulnerable) {
+      return "vulnerable";
+    }
+
+    // 撤退中
+    if (creature.isRetreating) {
+      return "retreating";
+    }
+
+    // 反撃中
+    if (creature.isCounterAttacking) {
+      return "counter";
+    }
+
+    // レッド族の場合
+    if (speciesType === "red") {
+      // 近くにグリーンがいれば追跡中
+      const nearbyGreen = allCreatures.find((c) => {
+        if (getSpeciesType(c.species) !== "green") return false;
+        const dx = c.position.x - creature.position.x;
+        const dy = c.position.y - creature.position.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        return dist < (creature.vision?.range || 150);
+      });
+      if (nearbyGreen) {
+        return "chasing";
+      }
+    }
+
+    // グリーン族の場合
+    if (speciesType === "green") {
+      // 自分の視野内にレッドがいれば逃走中
+      const nearbyRed = allCreatures.find((c) => {
+        if (getSpeciesType(c.species) !== "red") return false;
+        // 自分の視野内にレッドがいるかチェック
+        return isInFieldOfView(creature, c.position.x, c.position.y);
+      });
+      if (nearbyRed) {
+        return "fleeing";
+      }
+
+      // 追跡中の攻撃者がいれば逃走中（視野外でも）
+      if (
+        creature.trackedAttackerPos &&
+        creature.trackingUntil &&
+        frameCountRef.current < creature.trackingUntil
+      ) {
+        return "fleeing";
+      }
+
+      // 植物を食べに行っている（foodGreed が高い場合）
+      if (creature.behaviorProgram.foodGreed > 0.5 && creature.energy < 80) {
+        return "eating";
+      }
+    }
+
+    return "idle";
+  };
 
   // refを最新に保つ（外部からの追加も反映）
   useEffect(() => {
@@ -120,6 +211,19 @@ const EcosystemCanvas = ({
         }
         return creature;
       });
+
+      // 登場アニメーション用にIDを記録
+      const newIds = newCreatures.map((c) => c.id);
+      setSpawningIds((prev) => new Set([...prev, ...newIds]));
+
+      // 0.6秒後に登場アニメーション終了
+      setTimeout(() => {
+        setSpawningIds((prev) => {
+          const next = new Set(prev);
+          newIds.forEach((id) => next.delete(id));
+          return next;
+        });
+      }, 600);
 
       creaturesRef.current = [...survivingCreatures, ...newCreatures];
       console.log(
@@ -271,6 +375,7 @@ const EcosystemCanvas = ({
 
       // デバッグ: 最初の数フレームだけログ出力
       frameCount++;
+      frameCountRef.current = frameCount;
       if (frameCount <= 5 || frameCount % 300 === 0) {
         console.log(
           `Frame ${frameCount}: creatures=${creaturesRef.current.length}, plants=${plantsRef.current.length}`
@@ -288,150 +393,182 @@ const EcosystemCanvas = ({
         MAX_PLANTS
       );
 
-      let updatedCreatures = currentCreatures.map((creature) => {
-        const currentFrame = frameCountRef.current;
+      let updatedCreatures: Creature[] = currentCreatures.map(
+        (creature): Creature => {
+          const currentFrame = frameCountRef.current;
 
-        // 撤退状態・無防備状態の回復チェック
-        let isRetreating = creature.isRetreating ?? false;
-        let isVulnerable = creature.isVulnerable ?? false;
-        let vulnerableUntil = creature.vulnerableUntil ?? 0;
+          // 撤退状態・無防備状態の回復チェック
+          let isRetreating = creature.isRetreating ?? false;
+          let isVulnerable = creature.isVulnerable ?? false;
+          let vulnerableUntil = creature.vulnerableUntil ?? 0;
 
-        // 無防備状態の終了チェック
-        if (isVulnerable && currentFrame > vulnerableUntil) {
-          isVulnerable = false;
-        }
-
-        // 撤退完了チェック（巣の近くに戻った場合）
-        if (isRetreating && creature.homePosition) {
-          const dx = creature.homePosition.x - creature.position.x;
-          const dy = creature.homePosition.y - creature.position.y;
-          const distToHome = Math.sqrt(dx * dx + dy * dy);
-          if (distToHome < 20) {
-            isRetreating = false;
+          // グリーンの追跡位置更新（視野内にレッドがいれば更新）
+          let trackedAttackerPos = creature.trackedAttackerPos;
+          let trackingUntil = creature.trackingUntil;
+          if (getSpeciesType(creature.species) === "green") {
+            const nearbyRed = currentCreatures.find((c) => {
+              if (getSpeciesType(c.species) !== "red") return false;
+              return isInFieldOfView(creature, c.position.x, c.position.y);
+            });
+            if (nearbyRed) {
+              // 視野内にレッドがいたら追跡位置を更新し、追跡期限を延長
+              trackedAttackerPos = {
+                x: nearbyRed.position.x,
+                y: nearbyRed.position.y,
+              };
+              trackingUntil = currentFrame + 180; // 3秒間追跡継続
+            }
           }
+
+          // 無防備状態の終了チェック
+          if (isVulnerable && currentFrame > vulnerableUntil) {
+            isVulnerable = false;
+          }
+
+          // 撤退完了チェック（巣の近くに戻った場合）
+          if (isRetreating && creature.homePosition) {
+            const dx = creature.homePosition.x - creature.position.x;
+            const dy = creature.homePosition.y - creature.position.y;
+            const distToHome = Math.sqrt(dx * dx + dy * dy);
+            if (distToHome < 20) {
+              isRetreating = false;
+            }
+          }
+
+          // 動作プログラムに基づいた知的移動を計算
+          const creatureWithState = {
+            ...creature,
+            isRetreating,
+            isVulnerable,
+            vulnerableUntil,
+            trackedAttackerPos,
+            trackingUntil,
+          };
+          const intelligentForce = calculateIntelligentMovement(
+            creatureWithState,
+            currentCreatures,
+            currentPlants,
+            canvasWidth,
+            canvasHeight,
+            obstaclesRef.current,
+            currentFrame
+          );
+
+          // 速度を更新（知的移動 + 現在の速度の慣性）- ゆっくり動く
+          let newVelocityX =
+            creature.velocity.x * 0.9 + intelligentForce.x * 0.2;
+          let newVelocityY =
+            creature.velocity.y * 0.9 + intelligentForce.y * 0.2;
+
+          // 最大速度制限（さらに遅く）
+          const maxSpeed = creature.attributes.speed * 0.15;
+          const currentSpeed = Math.sqrt(newVelocityX ** 2 + newVelocityY ** 2);
+          if (currentSpeed > maxSpeed) {
+            newVelocityX = (newVelocityX / currentSpeed) * maxSpeed;
+            newVelocityY = (newVelocityY / currentSpeed) * maxSpeed;
+          }
+
+          // 位置を更新
+          let newX = creature.position.x + newVelocityX;
+          let newY = creature.position.y + newVelocityY;
+
+          // 境界判定 - 端に到達したら逆サイドからワープ
+          const margin = 10;
+          if (newX < -margin) {
+            newX = canvasWidth + margin;
+          } else if (newX > canvasWidth + margin) {
+            newX = -margin;
+          }
+
+          if (newY < -margin) {
+            newY = canvasHeight + margin;
+          } else if (newY > canvasHeight + margin) {
+            newY = -margin;
+          }
+
+          // 食物連鎖に基づく空腹処理
+          const tier = getFoodChainTier(creature.species);
+          let hungerPenalty = 0;
+
+          // レッド族は体力が自動で減らない（倒されるまで生き続ける）
+          // グリーン族は植物を食べないと体力が減る仕組みなし（分裂ベース）
+          // 中間捕食者のみ空腹処理
+          if (tier === "predator") {
+            hungerPenalty = HUNGER_RATE;
+          }
+
+          // 年齢の増加
+          const newAge = creature.age + 1;
+
+          // 繁殖クールダウン
+          const newReproductionCooldown = Math.max(
+            0,
+            creature.reproductionCooldown - 1
+          );
+
+          // 分裂クールダウン
+          const newSplitCooldown = Math.max(0, creature.splitCooldown - 1);
+
+          // 生存ポイントの計算（10秒 = 600フレーム）
+          const newSurvivalFrames = (creature.survivalFrames || 0) + 1;
+          const survivalPointsToAdd =
+            Math.floor(newSurvivalFrames / 600) -
+            Math.floor((creature.survivalFrames || 0) / 600);
+          const newSurvivalPoints =
+            (creature.survivalPoints || 0) + survivalPointsToAdd;
+
+          // 生存ポイント獲得時に通知を生成
+          if (survivalPointsToAdd > 0) {
+            setPointNotifications((prev) => [
+              ...prev,
+              {
+                id: `survival-${creature.id}-${Date.now()}`,
+                x: creature.position.x,
+                y: creature.position.y,
+                amount: survivalPointsToAdd,
+                createdAt: Date.now(),
+              },
+            ]);
+          }
+
+          // 移動方向角度を更新（速度から計算、急激な変化を防ぐ）
+          const speed = Math.sqrt(newVelocityX ** 2 + newVelocityY ** 2);
+          let newWanderAngle = creature.wanderAngle ?? 0;
+          if (speed > 0.05) {
+            // 十分な速度がある時のみ方向を更新
+            const targetAngle = Math.atan2(newVelocityY, newVelocityX);
+            // 角度をなめらかに補間（急な変化を防ぐ）
+            let angleDiff = targetAngle - newWanderAngle;
+            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+            // 最大120度（2π/3ラジアン）までの変化に制限
+            const maxAngleChange = (Math.PI * 2) / 3; // 120度
+            angleDiff = Math.max(
+              -maxAngleChange,
+              Math.min(maxAngleChange, angleDiff)
+            );
+            newWanderAngle = newWanderAngle + angleDiff * 0.1;
+          }
+
+          return {
+            ...creature,
+            position: { x: newX, y: newY },
+            velocity: { x: newVelocityX, y: newVelocityY },
+            energy: Math.max(0, creature.energy - hungerPenalty),
+            age: newAge,
+            reproductionCooldown: newReproductionCooldown,
+            splitCooldown: newSplitCooldown,
+            wanderAngle: newWanderAngle,
+            survivalFrames: newSurvivalFrames,
+            survivalPoints: newSurvivalPoints,
+            isRetreating,
+            isVulnerable,
+            vulnerableUntil,
+            trackedAttackerPos,
+            trackingUntil,
+          };
         }
-
-        // 動作プログラムに基づいた知的移動を計算
-        const creatureWithState = {
-          ...creature,
-          isRetreating,
-          isVulnerable,
-          vulnerableUntil,
-        };
-        const intelligentForce = calculateIntelligentMovement(
-          creatureWithState,
-          currentCreatures,
-          currentPlants,
-          canvasWidth,
-          canvasHeight,
-          obstaclesRef.current,
-          currentFrame
-        );
-
-        // 速度を更新（知的移動 + 現在の速度の慣性）- ゆっくり動く
-        let newVelocityX = creature.velocity.x * 0.9 + intelligentForce.x * 0.2;
-        let newVelocityY = creature.velocity.y * 0.9 + intelligentForce.y * 0.2;
-
-        // 最大速度制限（さらに遅く）
-        const maxSpeed = creature.attributes.speed * 0.15;
-        const currentSpeed = Math.sqrt(newVelocityX ** 2 + newVelocityY ** 2);
-        if (currentSpeed > maxSpeed) {
-          newVelocityX = (newVelocityX / currentSpeed) * maxSpeed;
-          newVelocityY = (newVelocityY / currentSpeed) * maxSpeed;
-        }
-
-        // 位置を更新
-        let newX = creature.position.x + newVelocityX;
-        let newY = creature.position.y + newVelocityY;
-
-        // 境界判定 - 端に到達したら逆サイドからワープ
-        const margin = 10;
-        if (newX < -margin) {
-          newX = canvasWidth + margin;
-        } else if (newX > canvasWidth + margin) {
-          newX = -margin;
-        }
-
-        if (newY < -margin) {
-          newY = canvasHeight + margin;
-        } else if (newY > canvasHeight + margin) {
-          newY = -margin;
-        }
-
-        // 食物連鎖に基づく空腹処理
-        const tier = getFoodChainTier(creature.species);
-        let hungerPenalty = 0;
-
-        // レッド族は体力が自動で減らない（倒されるまで生き続ける）
-        // グリーン族は植物を食べないと体力が減る仕組みなし（分裂ベース）
-        // 中間捕食者のみ空腹処理
-        if (tier === "predator") {
-          hungerPenalty = HUNGER_RATE;
-        }
-
-        // 年齢の増加
-        const newAge = creature.age + 1;
-
-        // 繁殖クールダウン
-        const newReproductionCooldown = Math.max(
-          0,
-          creature.reproductionCooldown - 1
-        );
-
-        // 分裂クールダウン
-        const newSplitCooldown = Math.max(0, creature.splitCooldown - 1);
-
-        // 生存ポイントの計算（10秒 = 600フレーム）
-        const newSurvivalFrames = (creature.survivalFrames || 0) + 1;
-        const survivalPointsToAdd =
-          Math.floor(newSurvivalFrames / 600) -
-          Math.floor((creature.survivalFrames || 0) / 600);
-        const newSurvivalPoints =
-          (creature.survivalPoints || 0) + survivalPointsToAdd;
-
-        // 生存ポイント獲得時に通知を生成
-        if (survivalPointsToAdd > 0) {
-          setPointNotifications((prev) => [
-            ...prev,
-            {
-              id: `survival-${creature.id}-${Date.now()}`,
-              x: creature.position.x,
-              y: creature.position.y,
-              amount: survivalPointsToAdd,
-              createdAt: Date.now(),
-            },
-          ]);
-        }
-
-        // 移動方向角度を更新（速度から計算、急激な変化を防ぐ）
-        const speed = Math.sqrt(newVelocityX ** 2 + newVelocityY ** 2);
-        let newWanderAngle = creature.wanderAngle ?? 0;
-        if (speed > 0.05) {
-          // 十分な速度がある時のみ方向を更新
-          const targetAngle = Math.atan2(newVelocityY, newVelocityX);
-          // 角度をなめらかに補間（急な変化を防ぐ）
-          let angleDiff = targetAngle - newWanderAngle;
-          while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-          while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-          newWanderAngle = newWanderAngle + angleDiff * 0.1;
-        }
-
-        return {
-          ...creature,
-          position: { x: newX, y: newY },
-          velocity: { x: newVelocityX, y: newVelocityY },
-          energy: Math.max(0, creature.energy - hungerPenalty),
-          age: newAge,
-          reproductionCooldown: newReproductionCooldown,
-          splitCooldown: newSplitCooldown,
-          wanderAngle: newWanderAngle,
-          survivalFrames: newSurvivalFrames,
-          survivalPoints: newSurvivalPoints,
-          isRetreating,
-          isVulnerable,
-          vulnerableUntil,
-        };
-      });
+      );
 
       // 植物との衝突判定（草食動物が植物を食べる）
       for (let i = 0; i < updatedCreatures.length; i++) {
@@ -604,11 +741,23 @@ const EcosystemCanvas = ({
                 c1Update.lastAttackedBy = c2.id;
                 c1Update.lastAttackedAt = currentFrame;
 
-                // レッドがダメージを受けた場合、撤退して無防備状態に
+                // レッドがダメージを受けた場合、体力が50%以下なら撤退して無防備状態に
                 if (getSpeciesType(c1.species) === "red") {
-                  c1Update.isRetreating = true;
-                  c1Update.isVulnerable = true;
-                  c1Update.vulnerableUntil = currentFrame + 300; // 5秒間無防備
+                  const newEnergy = c1.energy - c1Damage + c1EnergyGain;
+                  if (newEnergy <= 50) {
+                    c1Update.isRetreating = true;
+                    c1Update.isVulnerable = true;
+                    c1Update.vulnerableUntil = currentFrame + 300; // 5秒間無防備
+                  }
+                }
+
+                // グリーンが攻撃を受けた場合、攻撃者の位置を5秒間追跡
+                if (getSpeciesType(c1.species) === "green") {
+                  c1Update.trackedAttackerPos = {
+                    x: c2.position.x,
+                    y: c2.position.y,
+                  };
+                  c1Update.trackingUntil = currentFrame + 300; // 5秒間追跡
                 }
               }
 
@@ -625,11 +774,23 @@ const EcosystemCanvas = ({
                 c2Update.lastAttackedBy = c1.id;
                 c2Update.lastAttackedAt = currentFrame;
 
-                // レッドがダメージを受けた場合、撤退して無防備状態に
+                // レッドがダメージを受けた場合、体力が50%以下なら撤退して無防備状態に
                 if (getSpeciesType(c2.species) === "red") {
-                  c2Update.isRetreating = true;
-                  c2Update.isVulnerable = true;
-                  c2Update.vulnerableUntil = currentFrame + 300; // 5秒間無防備
+                  const newEnergy = c2.energy - c2Damage + c2EnergyGain;
+                  if (newEnergy <= 50) {
+                    c2Update.isRetreating = true;
+                    c2Update.isVulnerable = true;
+                    c2Update.vulnerableUntil = currentFrame + 300; // 5秒間無防備
+                  }
+                }
+
+                // グリーンが攻撃を受けた場合、攻撃者の位置を5秒間追跡
+                if (getSpeciesType(c2.species) === "green") {
+                  c2Update.trackedAttackerPos = {
+                    x: c1.position.x,
+                    y: c1.position.y,
+                  };
+                  c2Update.trackingUntil = currentFrame + 300; // 5秒間追跡
                 }
               }
 
@@ -642,32 +803,56 @@ const EcosystemCanvas = ({
                 ...c2Update,
               };
 
-              // 衝突で少し離す
+              // 衝突で少し離す（攻撃を受けた側のみ押し戻す、攻撃者は追跡を継続）
               const dx = c2.position.x - c1.position.x;
               const dy = c2.position.y - c1.position.y;
               const dist = Math.sqrt(dx * dx + dy * dy) || 1;
               const pushForce = 2;
 
-              updatedCreatures[i] = {
-                ...updatedCreatures[i],
-                velocity: {
-                  x: updatedCreatures[i].velocity.x - (dx / dist) * pushForce,
-                  y: updatedCreatures[i].velocity.y - (dy / dist) * pushForce,
-                },
-              };
-              updatedCreatures[j] = {
-                ...updatedCreatures[j],
-                velocity: {
-                  x: updatedCreatures[j].velocity.x + (dx / dist) * pushForce,
-                  y: updatedCreatures[j].velocity.y + (dy / dist) * pushForce,
-                },
-              };
+              // c1が攻撃を受けた場合のみc1を押し戻す（攻撃者c2は追跡継続）
+              if (c1WasAttacked && c1Damage > 0) {
+                updatedCreatures[i] = {
+                  ...updatedCreatures[i],
+                  velocity: {
+                    x: updatedCreatures[i].velocity.x - (dx / dist) * pushForce,
+                    y: updatedCreatures[i].velocity.y - (dy / dist) * pushForce,
+                  },
+                };
+              }
+              // c2が攻撃を受けた場合のみc2を押し戻す（攻撃者c1は追跡継続）
+              if (c2WasAttacked && c2Damage > 0) {
+                updatedCreatures[j] = {
+                  ...updatedCreatures[j],
+                  velocity: {
+                    x: updatedCreatures[j].velocity.x + (dx / dist) * pushForce,
+                    y: updatedCreatures[j].velocity.y + (dy / dist) * pushForce,
+                  },
+                };
+              }
             }
           }
         }
       }
 
-      // エネルギーが0の生物を除去
+      // エネルギーが0の生物を消滅アニメーション付きで除去
+      const deadCreatures = updatedCreatures.filter((c) => c.energy <= 0);
+      if (deadCreatures.length > 0) {
+        // 消滅アニメーション用に追加
+        const newDying = deadCreatures.map((c) => ({
+          creature: c,
+          dieAt: Date.now(),
+        }));
+        setDyingCreatures((prev) => [...prev, ...newDying]);
+
+        // 0.5秒後に消滅アニメーション終了
+        setTimeout(() => {
+          setDyingCreatures((prev) =>
+            prev.filter(
+              (d) => !deadCreatures.some((dc) => dc.id === d.creature.id)
+            )
+          );
+        }, 500);
+      }
       updatedCreatures = updatedCreatures.filter((c) => c.energy > 0);
 
       // グリーンの分裂チェック（植物ポイントベース）
@@ -747,6 +932,62 @@ const EcosystemCanvas = ({
           );
       }
 
+      // グリーンが多い時（6体以上）、30秒に1回レッドを追加
+      if (
+        greenCount >= GREEN_THRESHOLD_FOR_RED_SPAWN &&
+        replenishCooldownRef.current.red === 0
+      ) {
+        console.log(
+          `Green count (${greenCount}) >= ${GREEN_THRESHOLD_FOR_RED_SPAWN}, spawning new Red...`
+        );
+        replenishCooldownRef.current.red = RED_SPAWN_WHEN_GREEN_MANY; // 30秒間隔
+        fetch("http://localhost:3001/api/creature/generate-red", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ count: 1 }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success) {
+              console.log(
+                `Spawned new Red due to many Greens:`,
+                data.creatures
+              );
+            }
+          })
+          .catch((err) =>
+            console.error("Failed to spawn Red for many Greens:", err)
+          );
+      }
+
+      // グリーンが3体以下の時、レッドも3体になるまで退場（energy最大のレッドを残す）
+      if (greenCount <= MIN_GREEN_COUNT && redCount > MIN_RED_COUNT) {
+        // レッド族を取得し、energyの降順でソート
+        const redCreatures = updatedCreatures
+          .filter(
+            (c) => c.species.includes("レッド") || c.species.includes("red")
+          )
+          .sort((a, b) => b.energy - a.energy);
+
+        // 上位3体のIDを取得
+        const redsToKeep = new Set(
+          redCreatures.slice(0, MIN_RED_COUNT).map((c) => c.id)
+        );
+
+        // 退場するレッドを除外
+        const redsToRemove = redCreatures.slice(MIN_RED_COUNT);
+        if (redsToRemove.length > 0) {
+          console.log(
+            `Green count (${greenCount}) <= ${MIN_GREEN_COUNT}, removing ${redsToRemove.length} Red creatures...`
+          );
+          updatedCreatures = updatedCreatures.filter(
+            (c) =>
+              !(c.species.includes("レッド") || c.species.includes("red")) ||
+              redsToKeep.has(c.id)
+          );
+        }
+      }
+
       // 植物を更新
       plantsRef.current = currentPlants;
       setPlants(currentPlants);
@@ -788,6 +1029,49 @@ const EcosystemCanvas = ({
 
   // 植物の数を集計
   const activePlantCount = plants.filter((p) => !p.isConsumed).length;
+
+  // --- レッドの巣の定義 ---
+  const RED_NEST = {
+    x: 120,
+    y: 120,
+    radius: 38,
+  };
+
+  // SVG内で巣を描画する関数
+  const renderRedNest = () => (
+    <g className="red-nest">
+      {/* Outer Danger Zone (Rotating dashed ring) */}
+      <circle
+        cx={RED_NEST.x}
+        cy={RED_NEST.y}
+        r={RED_NEST.radius}
+        fill="transparent"
+        stroke="#ef4444"
+        strokeWidth={2}
+        strokeDasharray="8 6"
+        className="nest-ring-outer"
+      />
+      {/* Inner Hazard Area (Pulsing) */}
+      <circle
+        cx={RED_NEST.x}
+        cy={RED_NEST.y}
+        r={RED_NEST.radius * 0.7}
+        fill="rgba(239, 68, 68, 0.2)"
+        stroke="none"
+        className="nest-ring-inner"
+      />
+      {/* Core (Solid) */}
+      <circle
+        cx={RED_NEST.x}
+        cy={RED_NEST.y}
+        r={RED_NEST.radius * 0.35}
+        fill="#ef4444"
+        fillOpacity="0.8"
+        stroke="none"
+        filter="drop-shadow(0 0 8px #ef4444)"
+      />
+    </g>
+  );
 
   return (
     <div className="ecosystem-canvas" ref={canvasRef}>
@@ -878,8 +1162,26 @@ const EcosystemCanvas = ({
         ))}
 
         {/* 生物を描画 */}
-        {creatures.map((creature) => (
-          <CreatureSVG key={creature.id} creature={creature} />
+        {creatures.map((creature) => {
+          const behaviorState = getBehaviorState(creature, creatures);
+          const isSpawning = spawningIds.has(creature.id);
+          return (
+            <CreatureSVG
+              key={creature.id}
+              creature={creature}
+              behaviorState={behaviorState}
+              isSpawning={isSpawning}
+            />
+          );
+        })}
+
+        {/* 消滅アニメーション中のキャラクターを描画 */}
+        {dyingCreatures.map((dying) => (
+          <CreatureSVG
+            key={`dying-${dying.creature.id}`}
+            creature={dying.creature}
+            isDying={true}
+          />
         ))}
 
         {/* ポイント獲得通知を描画 */}
@@ -903,6 +1205,9 @@ const EcosystemCanvas = ({
             </text>
           );
         })}
+
+        {/* レッドの巣を描画 */}
+        {renderRedNest()}
       </svg>
 
       {/* オーバーレイ情報（シンプルにまとめ） */}

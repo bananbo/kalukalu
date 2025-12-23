@@ -2,9 +2,24 @@ import { Creature } from "../types/creature";
 
 interface CreatureSVGProps {
   creature: Creature;
+  behaviorState?:
+    | "chasing"
+    | "fleeing"
+    | "eating"
+    | "counter"
+    | "vulnerable"
+    | "retreating"
+    | "idle";
+  isSpawning?: boolean; // 登場アニメーション中
+  isDying?: boolean; // 消滅アニメーション中
 }
 
-const CreatureSVG = ({ creature }: CreatureSVGProps) => {
+const CreatureSVG = ({
+  creature,
+  behaviorState = "idle",
+  isSpawning = false,
+  isDying = false,
+}: CreatureSVGProps) => {
   const { position, appearance, attributes } = creature;
   const size = attributes.size * 2.5 + 5; // 5-30px（小さく）
 
@@ -230,6 +245,13 @@ const CreatureSVG = ({ creature }: CreatureSVGProps) => {
     const { angle, range } = creature.vision;
     const facingAngle = creature.wanderAngle || 0;
 
+    // 種族に応じた色を設定
+    const speciesType =
+      creature.species.includes("レッド") || creature.species.includes("red")
+        ? "red"
+        : "green";
+    const baseColor = speciesType === "red" ? "255, 80, 80" : "80, 200, 80";
+
     // 360度視野の場合は円を描画
     if (angle >= Math.PI * 2) {
       return (
@@ -237,8 +259,8 @@ const CreatureSVG = ({ creature }: CreatureSVGProps) => {
           cx={position.x}
           cy={position.y}
           r={range}
-          fill="rgba(100, 200, 100, 0.08)"
-          stroke="rgba(100, 200, 100, 0.2)"
+          fill={`rgba(${baseColor}, 0.08)`}
+          stroke={`rgba(${baseColor}, 0.2)`}
           strokeWidth={1}
           strokeDasharray="4 2"
         />
@@ -265,20 +287,11 @@ const CreatureSVG = ({ creature }: CreatureSVGProps) => {
       Z
     `;
 
-    // 視野角に応じた色
-    const isNarrow = angle < Math.PI;
-    const fillColor = isNarrow
-      ? "rgba(255, 100, 100, 0.08)" // 狭い視野（レッド系）
-      : "rgba(100, 150, 255, 0.08)"; // 広い視野（ブルー系）
-    const strokeColor = isNarrow
-      ? "rgba(255, 100, 100, 0.25)"
-      : "rgba(100, 150, 255, 0.25)";
-
     return (
       <path
         d={path}
-        fill={fillColor}
-        stroke={strokeColor}
+        fill={`rgba(${baseColor}, 0.08)`}
+        stroke={`rgba(${baseColor}, 0.25)`}
         strokeWidth={1}
         strokeDasharray="4 2"
       />
@@ -359,8 +372,80 @@ const CreatureSVG = ({ creature }: CreatureSVGProps) => {
     );
   };
 
+  // 状態アイコンを表示
+  const renderStatusIcon = () => {
+    if (behaviorState === "idle" && !isSpawning) return null;
+
+    const iconY = position.y - size / 2 - 20; // 調整したY位置
+    let iconClass = "";
+
+    // スポーン中は特別なアイコンかもしくは表示しない
+    if (isSpawning) {
+      // iconClass = "state-spawn"; // もしスポーンアイコンがあれば
+      return null; // スポーンアニメーション中はアイコンなしにする
+    }
+
+    switch (behaviorState) {
+      case "chasing":
+        iconClass = "state-chase";
+        break;
+      case "fleeing":
+        iconClass = "state-flee";
+        break;
+      case "eating":
+        iconClass = "state-eat";
+        break;
+      case "counter":
+        iconClass = "state-counter";
+        break;
+      case "vulnerable":
+        iconClass = "state-vulnerable";
+        break;
+      case "retreating":
+        iconClass = "state-retreat";
+        break;
+      default:
+        return null;
+    }
+
+    // アイコンのサイズ
+    const iconSize = 24;
+
+    return (
+      <foreignObject
+        x={position.x - iconSize / 2}
+        y={iconY - iconSize / 2}
+        width={iconSize}
+        height={iconSize}
+        className="status-icon-wrapper"
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            width: "100%",
+            height: "100%",
+          }}
+        >
+          <span
+            className={`state-icon ${iconClass}`}
+            style={{ width: "100%", height: "100%" }}
+          ></span>
+        </div>
+      </foreignObject>
+    );
+  };
+
+  // アニメーションクラス名を決定
+  const getAnimationClass = () => {
+    if (isSpawning) return "creature creature-spawn";
+    if (isDying) return "creature creature-die";
+    return "creature";
+  };
+
   return (
-    <g className="creature" opacity={creature.energy > 0 ? 1 : 0.3}>
+    <g className={getAnimationClass()} opacity={creature.energy > 0 ? 1 : 0.3}>
       {getPattern()}
       {renderFieldOfView()}
       {renderWings()}
@@ -368,6 +453,7 @@ const CreatureSVG = ({ creature }: CreatureSVGProps) => {
       {renderBody()}
       {renderEyes()}
       {renderEnergyBar()}
+      {renderStatusIcon()}
       {renderNameLabel()}
     </g>
   );

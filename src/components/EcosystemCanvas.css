@@ -291,3 +291,128 @@
 .green-count {
   color: #4ade80;
 }
+
+/* キャラクターアニメーション */
+.creature {
+  transition: opacity 0.3s ease;
+}
+
+/* 登場アニメーション */
+.creature-spawn {
+  animation: creatureSpawn 0.6s ease-out forwards;
+}
+
+@keyframes creatureSpawn {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 消滅アニメーション */
+.creature-die {
+  animation: creatureDie 0.5s ease-in forwards;
+}
+
+@keyframes creatureDie {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+}
+
+/* 状態アイコンアニメーション */
+.status-icon {
+  animation: statusBounce 1s ease-in-out infinite;
+}
+
+@keyframes statusBounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+/* 追跡中のキャラの強調 */
+.creature-chasing {
+  filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.6));
+}
+
+/* 逃走中のキャラの強調 */
+.creature-fleeing {
+  filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.6));
+}
+
+/* 反撃中のキャラの強調 */
+.creature-counter {
+  filter: drop-shadow(0 0 8px rgba(249, 115, 22, 0.6));
+}
+
+/* 無防備状態のキャラの強調 */
+.creature-vulnerable {
+  filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.6));
+  animation: vulnerablePulse 0.5s ease-in-out infinite;
+}
+
+@keyframes vulnerablePulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Red Nest Animations */
+.nest-ring-outer {
+  animation: nestRotate 20s linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@keyframes nestRotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.nest-ring-inner {
+  animation: nestPulse 4s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@keyframes nestPulse {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.1);
+  }
+}

@@ -6,7 +6,10 @@ interface AIGeneratorPopupProps {
   onToggle: () => void;
 }
 
-export default function AIGeneratorPopup({ isOpen, onToggle }: AIGeneratorPopupProps) {
+export default function AIGeneratorPopup({
+  isOpen,
+  onToggle,
+}: AIGeneratorPopupProps) {
   const [aiAuthor, setAiAuthor] = useState("");
   const [aiMessage, setAiMessage] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
@@ -23,14 +26,17 @@ export default function AIGeneratorPopup({ isOpen, onToggle }: AIGeneratorPopupP
     setAiResult(null);
 
     try {
-      const response = await fetch("http://localhost:3001/api/creature/preview-ai", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          author: aiAuthor,
-          message: aiMessage,
-        }),
-      });
+      const response = await fetch(
+        "http://localhost:3001/api/creature/preview-ai",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            author: aiAuthor,
+            message: aiMessage,
+          }),
+        }
+      );
 
       const data = await response.json();
 
@@ -58,14 +64,17 @@ export default function AIGeneratorPopup({ isOpen, onToggle }: AIGeneratorPopupP
     setAiResult(null);
 
     try {
-      const response = await fetch("http://localhost:3001/api/creature/create-ai", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          author: aiAuthor,
-          message: aiMessage,
-        }),
-      });
+      const response = await fetch(
+        "http://localhost:3001/api/creature/create-ai",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            author: aiAuthor,
+            message: aiMessage,
+          }),
+        }
+      );
 
       const data = await response.json();
 
@@ -92,13 +101,13 @@ export default function AIGeneratorPopup({ isOpen, onToggle }: AIGeneratorPopupP
         onClick={onToggle}
         title="AI生成"
       >
-        {isOpen ? "✕" : "🤖 AI"}
+        {isOpen ? "✕" : "ADD"}
       </button>
 
       {/* ポップアップパネル */}
       <div className={`ai-popup-panel ${isOpen ? "open" : ""}`}>
         <div className="ai-popup-header">
-          <h3>🤖 AI キャラクター生成</h3>
+          <h3>キャラクター生成</h3>
         </div>
 
         <div className="ai-popup-content">

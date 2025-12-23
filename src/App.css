@@ -220,3 +220,100 @@
   filter: grayscale(100%) brightness(0.5);
   opacity: 0.5;
 }
+
+/* State Icon Sprite System (Character States & Logos) */
+.state-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  background-image: url("./assets/state_icons.png");
+  background-repeat: no-repeat;
+  background-size: 500% 500%; /* 5 cols, 5 rows */
+  vertical-align: sub;
+  mix-blend-mode: screen;
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.5));
+  image-rendering: pixelated;
+}
+
+/* Row 1: 0% */
+.state-idle {
+  background-position: 0% 0%;
+}
+.state-chase {
+  background-position: 25% 0%;
+}
+.state-flee {
+  background-position: 50% 0%;
+}
+.state-eat {
+  background-position: 75% 0%;
+}
+.state-attack {
+  background-position: 100% 0%;
+}
+
+/* Row 2: 25% */
+.state-counter {
+  background-position: 0% 25%;
+}
+.state-vulnerable {
+  background-position: 25% 25%;
+}
+.state-retreat {
+  background-position: 50% 25%;
+}
+.state-spawn {
+  background-position: 75% 25%;
+}
+.state-dead {
+  background-position: 100% 25%;
+}
+
+/* Row 3: 50% */
+.state-logo {
+  background-position: 0% 50%;
+} /* Kalukalu Logo */
+.state-heart {
+  background-position: 25% 50%;
+}
+.state-question {
+  background-position: 50% 50%;
+}
+.state-exclamation {
+  background-position: 75% 50%;
+}
+.state-levelup {
+  background-position: 100% 50%;
+}
+
+/* Row 4: 75% */
+.state-sleep {
+  background-position: 0% 75%;
+}
+.state-home {
+  background-position: 25% 75%;
+}
+.state-shield {
+  background-position: 50% 75%;
+}
+.state-battery {
+  background-position: 75% 75%;
+}
+.state-dna {
+  background-position: 100% 75%;
+}
+
+/* App Header Logo Style */
+.app-logo {
+  display: inline-block;
+  width: 1.5em; /* Larger logo */
+  height: 1.5em; /* Larger logo */
+  margin-right: 0.5rem;
+  background-image: url("./assets/state_icons.png");
+  background-repeat: no-repeat;
+  background-size: 500% 500%; /* 5x5 grid */
+  background-position: 0% 50%; /* Logo position (Row 3) */
+  vertical-align: text-bottom;
+  mix-blend-mode: screen;
+  image-rendering: pixelated;
+}

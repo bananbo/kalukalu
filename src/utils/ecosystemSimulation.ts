@@ -319,6 +319,9 @@ export function handleCombat(
   if (c1Type === "red" && c2Type === "green") {
     // レッド(c1)がグリーン(c2)を捕まえる
     const baseDamage = 30 + c1.attributes.strength * 3;
+    // 体格（size）による防御力: 高いとダメージ軽減（最大30%軽減）
+    const sizeDefense = 1 - c2.attributes.size * 0.03;
+    const finalDamage = Math.floor(baseDamage * sizeDefense);
 
     // グリーンが反撃中（isCounterAttacking）の場合、レッドにわずかなダメージ
     // 回避行動中（fleeWhenWeak が高い && !isCounterAttacking）の場合は反撃なし
@@ -333,7 +336,7 @@ export function handleCombat(
 
     return {
       c1Damage: counterDamage,
-      c2Damage: baseDamage,
+      c2Damage: finalDamage,
       c1EnergyGain: 40,
       c2EnergyGain: 0,
       c1AttackPoints: 0,
@@ -346,6 +349,9 @@ export function handleCombat(
   if (c2Type === "red" && c1Type === "green") {
     // レッド(c2)がグリーン(c1)を捕まえる
     const baseDamage = 30 + c2.attributes.strength * 3;
+    // 体格（size）による防御力: 高いとダメージ軽減（最大30%軽減）
+    const sizeDefense = 1 - c1.attributes.size * 0.03;
+    const finalDamage = Math.floor(baseDamage * sizeDefense);
 
     // グリーンが反撃中の場合
     let counterDamage = 0;
@@ -357,7 +363,7 @@ export function handleCombat(
     }
 
     return {
-      c1Damage: baseDamage,
+      c1Damage: finalDamage,
       c2Damage: counterDamage,
       c1EnergyGain: 0,
       c2EnergyGain: 40,
@@ -397,8 +403,12 @@ export function eatPlant(
     return { energyGain: 0, canEat: false, plantPointsGain: 0 };
   }
 
+  // 知性（intelligence）ボーナス: 高いとエネルギー効率アップ（+0〜50%）
+  const intelligenceBonus = 1 + creature.attributes.intelligence * 0.05;
+  const energyGain = Math.floor(plant.energy * intelligenceBonus);
+
   // 植物を食べると1ポイント獲得
-  return { energyGain: plant.energy, canEat: true, plantPointsGain: 1 };
+  return { energyGain, canEat: true, plantPointsGain: 1 };
 }
 
 // 植物の寿命（フレーム数）- 約60秒
@@ -511,14 +521,25 @@ export function canReproduce(c1: Creature, c2: Creature): boolean {
   );
 }
 
+/**
+ * 社会性（social）に応じた分裂に必要なポイントを計算
+ * social=0 → 10ポイント必要
+ * social=10 → 6ポイント必要
+ */
+export function getSplitRequirement(creature: Creature): number {
+  const socialBonus = Math.floor(creature.attributes.social * 0.4); // 0〜4ポイント減少
+  return Math.max(6, 10 - socialBonus); // 最低6ポイント必要
+}
+
 // グリーンの分裂チェック（植物ポイントベース）
 export function canSplit(creature: Creature): boolean {
   const type = getSpeciesType(creature.species);
+  const requiredPoints = getSplitRequirement(creature);
   // グリーンのみ分裂可能
   return (
     type === "green" &&
     creature.splitCooldown <= 0 &&
-    creature.plantPoints >= 10 && // 10ポイント貯まったら分裂可能
+    creature.plantPoints >= requiredPoints && // 社会性に応じたポイント
     creature.energy > 60 // 十分なエネルギーが必要
   );
 }
@@ -652,7 +673,7 @@ export function split(
     position,
     homePosition: { ...position },
     velocity: { x: 0, y: 0 },
-    energy: 60,
+    energy: 40 + attributes.size * 5, // 体格に応じた初期エネルギー（40〜90）
     age: 0,
     author: parent.author,
     comment: `${parent.name}から分裂`,
@@ -674,10 +695,11 @@ export function split(
     isCounterAttacking: false, // 反撃中ではない
   };
 
-  // 親は植物ポイントを10消費し、クールダウンが発生
+  // 親は植物ポイントを消費（社会性に応じた量）し、クールダウンが発生
+  const requiredPoints = getSplitRequirement(parent);
   const updatedParent = {
     ...parent,
-    plantPoints: parent.plantPoints - 10,
+    plantPoints: parent.plantPoints - requiredPoints,
     splitCooldown: 300, // 分裂クールダウン（5秒）
     energy: parent.energy - 20, // エネルギーも消費
   };
