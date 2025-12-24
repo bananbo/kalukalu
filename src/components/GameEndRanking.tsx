@@ -69,7 +69,7 @@ export default function GameEndRanking({ onRestart }: GameEndRankingProps) {
       <div className={`game-end-modal ${showContent ? "show" : ""}`}>
         <div className="game-end-header">
           <h1>🎉 本日の配信終了！</h1>
-          <p>2時間の配信お疲れさまでした</p>
+          <p>毎日20時～配信予定</p>
         </div>
 
         <div className="game-end-ranking">

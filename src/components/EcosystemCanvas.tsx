@@ -1358,7 +1358,7 @@ const EcosystemCanvas = ({
         <div className="scoreboard-header">グリーン スコア</div>
         <div className="scoreboard-list">
           {(() => {
-            // 分身を含むグリーンを元の名前でグループ化
+            // typeIDごとにグリーンをグループ化
             const greenCreatures = creatures.filter(
               (c) => getSpeciesType(c.species) === "green"
             );
@@ -1373,16 +1373,17 @@ const EcosystemCanvas = ({
             >();
 
             greenCreatures.forEach((c) => {
-              // 「分身」を除去してベース名を取得
-              const baseName = c.name.replace(/分身+$/, "");
               const score = (c.survivalPoints || 0) + (c.plantPoints || 0);
 
-              if (grouped.has(baseName)) {
-                const existing = grouped.get(baseName)!;
+              // typeIdでグループ化
+              if (grouped.has(c.typeId)) {
+                const existing = grouped.get(c.typeId)!;
                 existing.totalScore += score;
                 existing.count += 1;
               } else {
-                grouped.set(baseName, {
+                // 「分身」を除去して元の名前を取得
+                const baseName = c.name.replace(/分身+$/, "");
+                grouped.set(c.typeId, {
                   baseName,
                   totalScore: score,
                   count: 1,
@@ -1400,7 +1401,7 @@ const EcosystemCanvas = ({
                     ? g.baseName.substring(0, 6) + "…"
                     : g.baseName;
                 return (
-                  <div key={g.baseName} className="scoreboard-item">
+                  <div key={g.typeId} className="scoreboard-item">
                     <span className="scoreboard-name" title={g.typeId}>
                       {displayName}
                       {g.count > 1 && (

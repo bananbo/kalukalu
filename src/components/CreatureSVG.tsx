@@ -23,7 +23,7 @@ const CreatureSVG = ({
   isDying = false,
   obstacles = [],
 }: CreatureSVGProps) => {
-  const { position, appearance, attributes } = creature;
+  const { position, appearance, attributes, svgCode } = creature;
   const size = attributes.size * 2.5 + 5; // 5-30px（小さく）
 
   // アニメーション用のスケールと不透明度
@@ -607,6 +607,22 @@ const CreatureSVG = ({
     );
   };
 
+  // AI生成SVGを描画
+  const renderAIGeneratedSVG = () => {
+    if (!svgCode) return null;
+
+    // SVGコードをスケーリングして配置
+    // AI生成のSVGは viewBox="0 0 100 100" で中心が(50, 50)と仮定
+    const scale = size / 50; // size を 50px 基準でスケール
+
+    return (
+      <g
+        transform={`translate(${position.x - size / 2}, ${position.y - size / 2}) scale(${scale})`}
+        dangerouslySetInnerHTML={{ __html: svgCode }}
+      />
+    );
+  };
+
   // 最終的な不透明度を計算
   const finalOpacity = (creature.energy > 0 ? 1 : 0.3) * animOpacity;
 
@@ -623,12 +639,21 @@ const CreatureSVG = ({
             : "none",
       }}
     >
-      {getPattern()}
       {renderFieldOfView()}
-      {renderWings()}
-      {renderTentacles()}
-      {renderBody()}
-      {renderEyes()}
+
+      {/* AI生成SVGがあればそれを使用、なければテンプレートベースの描画 */}
+      {svgCode ? (
+        renderAIGeneratedSVG()
+      ) : (
+        <>
+          {getPattern()}
+          {renderWings()}
+          {renderTentacles()}
+          {renderBody()}
+          {renderEyes()}
+        </>
+      )}
+
       {renderEnergyBar()}
       {renderStatusIcon()}
       {renderNameLabel()}

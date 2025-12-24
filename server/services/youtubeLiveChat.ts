@@ -15,7 +15,7 @@ export class YouTubeLiveChat extends EventEmitter {
   private nextPageToken: string | undefined;
   // YouTube API Quota対策: 1日10,000ユニット制限を守るため、
   // 1リクエスト5ユニット消費  private nextPollTime: number = 0;
-  private readonly MIN_POLLING_INTERVAL = 5000; // 5 seconds (Cost: ~7200 quota for 2 hours)
+  private readonly MIN_POLLING_INTERVAL = 20000; // 10 seconds (Cost: ~3600 quota for 2 hours)
   constructor(videoId: string) {
     super();
     this.videoId = videoId;

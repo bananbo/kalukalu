@@ -356,6 +356,7 @@ export interface Creature {
     hasWings: boolean;
     pattern: "solid" | "stripes" | "spots" | "gradient";
   };
+  svgCode?: string; // AI生成されたSVGコード（オプション、なければappearanceから生成）
   behavior: {
     diet: "herbivore" | "carnivore" | "omnivore";
     activity: "diurnal" | "nocturnal" | "cathemeral";

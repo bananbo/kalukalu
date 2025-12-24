@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
 import { Creature, getSpeciesType } from "../types/creature";
+import CreatureSVG from "./CreatureSVG";
 import "./CreatureStats.css";
 
 interface CreatureStatsProps {
@@ -7,49 +7,27 @@ interface CreatureStatsProps {
 }
 
 export default function CreatureStats({ creatures }: CreatureStatsProps) {
-  const [currentIndex, setCurrentIndex] = useState(0);
+  // システム生成のキャラクターを除外し、ユーザーが作成した最新のキャラクターを表示
+  const userCreatures = creatures.filter((creature) => {
+    const isSystem =
+      creature.author === "システム" ||
+      creature.author === "system" ||
+      creature.author === "System";
+    return !isSystem;
+  });
 
-  // 3秒ごとに表示するキャラクターを切り替え
-  useEffect(() => {
-    if (creatures.length === 0) return;
+  const lastCreature = userCreatures.length > 0 ? userCreatures[userCreatures.length - 1] : null;
 
-    const interval = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % creatures.length);
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [creatures.length]);
-
-  // インデックスが範囲外になったらリセット
-  useEffect(() => {
-    if (currentIndex >= creatures.length && creatures.length > 0) {
-      setCurrentIndex(0);
-    }
-  }, [currentIndex, creatures.length]);
-
-  if (creatures.length === 0) {
+  if (!lastCreature) {
     return (
       <div className="creature-stats-panel">
         <h2>キャラクター性質</h2>
-        <div className="no-creatures">キャラクターがいません</div>
+        <div className="no-creatures">ユーザー作成のキャラクターがいません</div>
       </div>
     );
   }
 
-  const creature = creatures[currentIndex];
-
-  // クリーチャーが存在しない場合の安全チェック
-  if (!creature) {
-    return (
-      <div className="creature-stats-panel">
-        <div className="stats-header">
-          <h2>キャラクター性質</h2>
-        </div>
-        <div className="no-creatures">キャラクターがいません</div>
-      </div>
-    );
-  }
-
+  const creature = lastCreature;
   const speciesType = getSpeciesType(creature.species);
   const isRed = speciesType === "red";
 
@@ -58,14 +36,26 @@ export default function CreatureStats({ creatures }: CreatureStatsProps) {
       <div className="stats-header">
         <h2>
           <span className="icon icon-intelligence icon-lg"></span>{" "}
-          キャラクター性質
+          最新キャラクター
         </h2>
-        <div className="stats-counter">
-          {currentIndex + 1} / {creatures.length}
-        </div>
       </div>
 
       <div className={`creature-card ${isRed ? "red-card" : "green-card"}`}>
+        {/* キャラクターイラスト */}
+        <div className="creature-illustration">
+          <svg width="80" height="80" viewBox="0 0 80 80">
+            <g transform="translate(40, 40)">
+              <CreatureSVG
+                creature={{
+                  ...creature,
+                  position: { x: 0, y: 0 },
+                }}
+                behaviorState="idle"
+              />
+            </g>
+          </svg>
+        </div>
+
         {/* 基本情報 */}
         <div className="creature-basic-info">
           <div className="creature-name-row">
@@ -76,6 +66,16 @@ export default function CreatureStats({ creatures }: CreatureStatsProps) {
           </div>
           <div className="creature-author">by {creature.author}</div>
         </div>
+
+        {/* プロンプト（コメント） */}
+        {creature.comment && (
+          <div className="creature-comment">
+            <div className="comment-label">
+              <span className="icon icon-pen"></span> コメント
+            </div>
+            <div className="comment-text">{creature.comment}</div>
+          </div>
+        )}
 
         {/* 属性 */}
         <div className="stats-section">
@@ -131,43 +131,6 @@ export default function CreatureStats({ creatures }: CreatureStatsProps) {
               max={10}
               color="#4ade80"
             />
-          </div>
-        </div>
-
-        {/* ステータス */}
-        <div className="stats-section">
-          <h3>ステータス</h3>
-          <div className="status-grid">
-            <div className="status-item">
-              <span className="status-label">
-                <span className="icon icon-energy"></span> エナジー
-              </span>
-              <span className="status-value">
-                {Math.round(creature.energy)}
-              </span>
-            </div>
-            <div className="status-item">
-              <span className="status-label">
-                <span className="icon icon-time"></span> 年齢
-              </span>
-              <span className="status-value">
-                {Math.floor(creature.age / 60)}s
-              </span>
-            </div>
-            <div className="status-item">
-              <span className="status-label">
-                <span className="icon icon-leaf"></span> 植物pt
-              </span>
-              <span className="status-value">{creature.plantPoints}</span>
-            </div>
-            <div className="status-item">
-              <span className="status-label">
-                <span className="icon icon-shield"></span> 生存pt
-              </span>
-              <span className="status-value">
-                {creature.survivalPoints || 0}
-              </span>
-            </div>
           </div>
         </div>
       </div>

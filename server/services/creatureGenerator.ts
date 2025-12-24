@@ -40,6 +40,7 @@ interface AIGeneratedCreatureParams {
     hasWings: boolean;
     pattern: "solid" | "stripes" | "spots" | "gradient";
   };
+  svgCode: string; // AI生成されたSVGコード
   behavior: {
     diet: "herbivore" | "carnivore" | "omnivore";
     activity: "diurnal" | "nocturnal" | "cathemeral";
@@ -76,6 +77,7 @@ interface Creature {
     hasWings: boolean;
     pattern: "solid" | "stripes" | "spots" | "gradient";
   };
+  svgCode?: string; // AI生成されたSVGコード（オプション、なければappearanceから生成）
   behavior: {
     diet: "herbivore" | "carnivore" | "omnivore";
     activity: "diurnal" | "nocturnal" | "cathemeral";
@@ -347,6 +349,7 @@ export class CreatureGenerator {
     "hasWings": true/false（翼があるか）,
     "pattern": "solid" | "stripes" | "spots" | "gradient" のいずれか
   },
+  "svgCode": "SVGコード（以下の仕様に従って生成）",
   "behavior": {
     "diet": "herbivore"（草食）| "carnivore"（肉食）| "omnivore"（雑食）,
     "activity": "diurnal"（昼行性）| "nocturnal"（夜行性）| "cathemeral"（両方）,
@@ -380,6 +383,18 @@ export class CreatureGenerator {
     "range": 視野距離（50〜200）
   }
 }
+
+【SVGコード生成の仕様】
+- viewBox="0 0 100 100"で中心が(50, 50)のSVGコードを生成してください
+- コメント内容に基づいて、生物の特徴を視覚的に表現してください
+- 複数のSVG要素（circle、rect、polygon、path等）を組み合わせて、ユニークで面白いデザインにしてください
+- primaryColorとsecondaryColorを使用して色付けしてください
+- hasEyes=trueの場合は目を表現してください
+- hasTentacles=trueの場合は触手を表現してください
+- hasWings=trueの場合は翼を表現してください
+- patternに応じて模様を追加してください（stripes=縞模様、spots=斑点、gradient=グラデーション）
+- 完全なSVGコード（<svg>タグを含まない、内部要素のみ）を文字列として返してください
+- 例: "<circle cx='50' cy='50' r='30' fill='#22c55e'/><circle cx='40' cy='45' r='5' fill='#000'/><circle cx='60' cy='45' r='5' fill='#000'/>"
 
 【ゲームシステム】
 - マップには壁や岩などの障害物があります
@@ -461,6 +476,7 @@ export class CreatureGenerator {
       typeId: typeId, // キャラクタータイプID
       attributes: balancedAttributes,
       appearance: aiParams.appearance,
+      svgCode: aiParams.svgCode, // AI生成されたSVGコード
       behavior: aiParams.behavior,
       traits: aiParams.traits,
       behaviorProgram: aiParams.behaviorProgram,
@@ -609,6 +625,9 @@ export class CreatureGenerator {
       .toString(36)
       .substring(2, 7)}`;
 
+    // デバッグモード用の簡易SVGコードを生成
+    const svgCode = this.generateSimpleSVG(appearance, balancedAttributes);
+
     return {
       id: `creature-${Date.now()}-${Math.random()
         .toString(36)
@@ -621,6 +640,7 @@ export class CreatureGenerator {
       typeId: typeId, // キャラクタータイプID
       attributes: balancedAttributes,
       appearance,
+      svgCode, // デバッグモード用の簡易SVGコード
       behavior,
       traits,
       behaviorProgram,
@@ -1350,6 +1370,95 @@ export class CreatureGenerator {
       panicThreshold: Math.max(0, Math.min(1, panicThreshold)),
       bravery: Math.max(0, Math.min(1, bravery)),
     };
+  }
+
+  // デバッグモード用の簡易SVGコードを生成
+  private generateSimpleSVG(
+    appearance: Creature["appearance"],
+    attributes: Creature["attributes"]
+  ): string {
+    const primaryColor = appearance.primaryColor;
+    const secondaryColor = appearance.secondaryColor;
+    let svgElements: string[] = [];
+
+    // 体の形状
+    switch (appearance.bodyType) {
+      case "circle":
+        svgElements.push(
+          `<circle cx="50" cy="50" r="25" fill="${primaryColor}"/>`
+        );
+        break;
+      case "triangle":
+        svgElements.push(
+          `<polygon points="50,25 25,75 75,75" fill="${primaryColor}"/>`
+        );
+        break;
+      case "square":
+        svgElements.push(
+          `<rect x="25" y="25" width="50" height="50" fill="${primaryColor}"/>`
+        );
+        break;
+      case "star":
+        svgElements.push(
+          `<polygon points="50,20 55,40 75,40 60,52 65,72 50,60 35,72 40,52 25,40 45,40" fill="${primaryColor}"/>`
+        );
+        break;
+      case "organic":
+        svgElements.push(
+          `<ellipse cx="50" cy="50" rx="28" ry="22" fill="${primaryColor}"/>`
+        );
+        break;
+    }
+
+    // パターン
+    if (appearance.pattern === "stripes") {
+      svgElements.push(
+        `<rect x="40" y="30" width="5" height="40" fill="${secondaryColor}" opacity="0.7"/>`
+      );
+      svgElements.push(
+        `<rect x="55" y="30" width="5" height="40" fill="${secondaryColor}" opacity="0.7"/>`
+      );
+    } else if (appearance.pattern === "spots") {
+      svgElements.push(
+        `<circle cx="40" cy="45" r="4" fill="${secondaryColor}" opacity="0.8"/>`
+      );
+      svgElements.push(
+        `<circle cx="60" cy="45" r="4" fill="${secondaryColor}" opacity="0.8"/>`
+      );
+      svgElements.push(
+        `<circle cx="50" cy="60" r="3" fill="${secondaryColor}" opacity="0.8"/>`
+      );
+    }
+
+    // 目
+    if (appearance.hasEyes) {
+      svgElements.push(`<circle cx="42" cy="45" r="4" fill="white"/>`);
+      svgElements.push(`<circle cx="42" cy="45" r="2" fill="black"/>`);
+      svgElements.push(`<circle cx="58" cy="45" r="4" fill="white"/>`);
+      svgElements.push(`<circle cx="58" cy="45" r="2" fill="black"/>`);
+    }
+
+    // 触手
+    if (appearance.hasTentacles) {
+      svgElements.push(
+        `<line x1="30" y1="70" x2="20" y2="85" stroke="${secondaryColor}" stroke-width="3" stroke-linecap="round" opacity="0.7"/>`
+      );
+      svgElements.push(
+        `<line x1="70" y1="70" x2="80" y2="85" stroke="${secondaryColor}" stroke-width="3" stroke-linecap="round" opacity="0.7"/>`
+      );
+    }
+
+    // 翼
+    if (appearance.hasWings) {
+      svgElements.push(
+        `<ellipse cx="20" cy="50" rx="15" ry="8" fill="${secondaryColor}" opacity="0.6"/>`
+      );
+      svgElements.push(
+        `<ellipse cx="80" cy="50" rx="15" ry="8" fill="${secondaryColor}" opacity="0.6"/>`
+      );
+    }
+
+    return svgElements.join("");
   }
 
   // レッド族（鬼）を生成する
