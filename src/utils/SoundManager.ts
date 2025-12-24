@@ -3,14 +3,14 @@
  */
 
 type SoundType =
-  | 'attack'
-  | 'eat'
-  | 'spawn'
-  | 'death'
-  | 'backstab'
-  | 'plant-disappear'
-  | 'flee'
-  | 'point';
+  | "attack"
+  | "eat"
+  | "spawn"
+  | "death"
+  | "backstab"
+  | "plant-disappear"
+  | "flee"
+  | "point";
 
 class SoundManager {
   private static instance: SoundManager;
@@ -20,6 +20,7 @@ class SoundManager {
   private bgm: HTMLAudioElement | null;
   private bgmEnabled: boolean;
   private bgmVolume: number;
+  private hasUserInteracted: boolean;
 
   private constructor() {
     this.sounds = new Map();
@@ -28,12 +29,29 @@ class SoundManager {
     this.bgm = null;
     this.bgmEnabled = true;
     this.bgmVolume = 0.3;
+    this.hasUserInteracted = false;
     this.loadSounds();
     this.loadBGM();
-    // BGMをデフォルトで開始
-    if (this.bgmEnabled && this.bgm) {
-      this.playBGM();
-    }
+    // ユーザーの最初のインタラクションを待つ
+    this.setupUserInteractionListener();
+  }
+
+  private setupUserInteractionListener() {
+    const enableAudio = () => {
+      this.hasUserInteracted = true;
+      // BGMが有効なら再生を開始
+      if (this.bgmEnabled && this.bgm) {
+        this.playBGM();
+      }
+      // 一度だけ実行
+      document.removeEventListener("click", enableAudio);
+      document.removeEventListener("keydown", enableAudio);
+      document.removeEventListener("touchstart", enableAudio);
+    };
+
+    document.addEventListener("click", enableAudio);
+    document.addEventListener("keydown", enableAudio);
+    document.addEventListener("touchstart", enableAudio);
   }
 
   static getInstance(): SoundManager {
@@ -45,14 +63,14 @@ class SoundManager {
 
   private loadSounds() {
     const soundFiles: SoundType[] = [
-      'attack',
-      'eat',
-      'spawn',
-      'death',
-      'backstab',
-      'plant-disappear',
-      'flee',
-      'point',
+      "attack",
+      "eat",
+      "spawn",
+      "death",
+      "backstab",
+      "plant-disappear",
+      "flee",
+      "point",
     ];
 
     soundFiles.forEach((soundType) => {
@@ -63,21 +81,21 @@ class SoundManager {
   }
 
   private loadBGM() {
-    this.bgm = new Audio('/sounds/bgm.wav');
+    this.bgm = new Audio("/sounds/bgm.wav");
     this.bgm.loop = true;
     this.bgm.volume = this.bgmVolume;
   }
 
   play(soundType: SoundType, volumeMultiplier: number = 1.0) {
-    if (!this.enabled) return;
+    if (!this.enabled || !this.hasUserInteracted) return;
 
     const sound = this.sounds.get(soundType);
     if (sound) {
       // クローンを作成して再生（同時に複数回再生可能にする）
       const clone = sound.cloneNode() as HTMLAudioElement;
       clone.volume = this.volume * volumeMultiplier;
-      clone.play().catch((error) => {
-        console.warn(`Failed to play sound: ${soundType}`, error);
+      clone.play().catch(() => {
+        // ユーザーインタラクション前のエラーは無視
       });
     }
   }
@@ -103,10 +121,10 @@ class SoundManager {
 
   // BGM関連のメソッド
   playBGM() {
-    if (!this.bgm) return;
+    if (!this.bgm || !this.hasUserInteracted) return;
 
-    this.bgm.play().catch((error) => {
-      console.warn('Failed to play BGM:', error);
+    this.bgm.play().catch(() => {
+      // ユーザーインタラクション前のエラーは無視
     });
   }
 

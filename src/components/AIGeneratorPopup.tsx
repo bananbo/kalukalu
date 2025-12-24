@@ -78,9 +78,13 @@ export default function AIGeneratorPopup({
                   type="text"
                   value={aiAuthor}
                   onChange={(e) => setAiAuthor(e.target.value)}
-                  placeholder="作者名"
+                  placeholder="作者名（キャラ名に反映されます）"
                   className="text-input"
                 />
+                <div className="ai-hint">
+                  💡 作者名がキャラクター名の参考になります（例: 太郎 →
+                  タロウティー）
+                </div>
                 <textarea
                   value={aiMessage}
                   onChange={(e) => setAiMessage(e.target.value)}

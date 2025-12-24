@@ -131,6 +131,16 @@
   margin-bottom: 1rem;
 }
 
+.ai-hint {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  background: rgba(102, 126, 234, 0.1);
+  border: 1px solid rgba(102, 126, 234, 0.2);
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  margin-top: -0.25rem;
+}
+
 .text-input {
   width: 100%;
   padding: 0.625rem;

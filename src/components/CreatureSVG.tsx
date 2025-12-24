@@ -16,6 +16,8 @@ interface CreatureSVGProps {
   obstacles?: Obstacle[]; // 障害物（視野遮蔽表示用）
 }
 
+import { getSpeciesType } from "../types/creature";
+
 const CreatureSVG = ({
   creature,
   behaviorState = "idle",
@@ -24,7 +26,13 @@ const CreatureSVG = ({
   obstacles = [],
 }: CreatureSVGProps) => {
   const { position, appearance, attributes, svgCode } = creature;
-  const size = attributes.size * 2.5 + 5; // 5-30px（小さく）
+
+  // 種族に応じてサイズを調整
+  const speciesType = getSpeciesType(creature.species);
+  const size =
+    speciesType === "red"
+      ? attributes.size * 1.5 + 20 // レッド: 20-35px（小さめ）
+      : attributes.size * 3 + 15; // グリーン: 15-45px（大きめ）
 
   // アニメーション用のスケールと不透明度
   const [animScale, setAnimScale] = useState(isSpawning ? 0.3 : 1);
@@ -617,7 +625,9 @@ const CreatureSVG = ({
 
     return (
       <g
-        transform={`translate(${position.x - size / 2}, ${position.y - size / 2}) scale(${scale})`}
+        transform={`translate(${position.x - size / 2}, ${
+          position.y - size / 2
+        }) scale(${scale})`}
         dangerouslySetInnerHTML={{ __html: svgCode }}
       />
     );

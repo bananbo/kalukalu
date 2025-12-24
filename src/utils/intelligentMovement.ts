@@ -140,19 +140,23 @@ export function calculateIntelligentMovement(
           // グリーン・その他は従来通りの反応
           const bravery = program.bravery ?? 0.5;
           const counterAttack = program.counterAttack ?? 0.1;
+          const fleeWhenWeak = program.fleeWhenWeak ?? 0;
 
-          // 勇敢さと反撃傾向に基づいて行動を決定
-          if (bravery > 0.6 && counterAttack > 0.3 && creature.energy > 50) {
-            // 勇敢な性格は反撃
-            const counterForce = bravery * 0.8;
-            forceX += (dx / dist) * counterForce;
-            forceY += (dy / dist) * counterForce;
-          } else {
-            // 臆病な性格は逃げる
-            const panicThreshold = program.panicThreshold ?? 0.3;
-            const fleeForce = 1.0 - bravery + panicThreshold;
-            forceX -= (dx / dist) * fleeForce;
-            forceY -= (dy / dist) * fleeForce;
+          // fleeWhenWeak が 0 なら反応しない（おバカモード）
+          if (fleeWhenWeak > 0) {
+            // 勇敢さと反撃傾向に基づいて行動を決定
+            if (bravery > 0.6 && counterAttack > 0.3 && creature.energy > 50) {
+              // 勇敢な性格は反撃
+              const counterForce = bravery * 0.8;
+              forceX += (dx / dist) * counterForce;
+              forceY += (dy / dist) * counterForce;
+            } else {
+              // 臆病な性格は逃げる
+              const panicThreshold = program.panicThreshold ?? 0.3;
+              const fleeForce = (1.0 - bravery + panicThreshold) * fleeWhenWeak;
+              forceX -= (dx / dist) * fleeForce;
+              forceY -= (dy / dist) * fleeForce;
+            }
           }
         }
       }
@@ -166,8 +170,12 @@ export function calculateIntelligentMovement(
   let trackedThreatDist = Infinity;
   let trackedThreatDirX = 0;
   let trackedThreatDirY = 0;
+
+  // fleeWhenWeak が 0 なら追跡しない（おバカモード）
+  const fleeWhenWeakForTracking = program.fleeWhenWeak ?? 0;
   if (
     myType === "green" &&
+    fleeWhenWeakForTracking > 0 &&
     creature.trackedAttackerPos &&
     creature.trackingUntil &&
     currentFrame < creature.trackingUntil
@@ -180,7 +188,7 @@ export function calculateIntelligentMovement(
 
     if (trackedThreatDist > 0) {
       // 追跡中の攻撃者から逃げる（ただし視野内の脅威より弱い力）
-      const trackFleeForce = 0.4;
+      const trackFleeForce = 0.4 * fleeWhenWeakForTracking;
       trackedThreatForceX = -(trackedDx / trackedThreatDist) * trackFleeForce;
       trackedThreatForceY = -(trackedDy / trackedThreatDist) * trackFleeForce;
       trackedThreatDirX = trackedDx / trackedThreatDist;
@@ -220,7 +228,9 @@ export function calculateIntelligentMovement(
   }
 
   // ===== 草食動物（グリーン系）は植物を探す =====
-  if (myTier === "herbivore") {
+  // foodGreed が 0 の場合は植物を追わない（おバカモード）
+  const foodGreed = program.foodGreed ?? 0.7;
+  if (myTier === "herbivore" && foodGreed > 0) {
     const activePlants = plants.filter((p) => !p.isConsumed);
 
     for (const plant of activePlants) {
@@ -247,10 +257,10 @@ export function calculateIntelligentMovement(
       }
     }
 
-    // 植物に向かう力（空腹度に応じて強くなる）
+    // 植物に向かう力（空腹度とfoodGreedに応じて強くなる）
     if (nearestPreyDist < Infinity) {
       const hungerFactor = Math.max(0.3, (100 - creature.energy) / 100);
-      const plantForce = hungerFactor * 0.8;
+      const plantForce = hungerFactor * 0.8 * foodGreed; // foodGreedを乗算
       forceX += nearestPreyX * plantForce;
       forceY += nearestPreyY * plantForce;
     }
@@ -344,95 +354,103 @@ export function calculateIntelligentMovement(
 
       if (otherCanEatMe) {
         // ===== 逃走 or 背後攻撃行動 =====
-        const stealthAttack = program.stealthAttack ?? 0.3;
-        const counterAttack = program.counterAttack ?? 0.1;
-        const bravery = program.bravery ?? 0.5;
+        // fleeWhenWeak が 0 の場合は完全に無視（おバカモード）
+        const fleeWhenWeak = program.fleeWhenWeak ?? 0;
+        if (fleeWhenWeak > 0) {
+          const stealthAttack = program.stealthAttack ?? 0.3;
+          const counterAttack = program.counterAttack ?? 0.1;
+          const bravery = program.bravery ?? 0.5;
 
-        // 背後攻撃のチャンス判定
-        const canBackstab = canAttackFromBehind(creature, other);
-        const creatureType = getSpeciesType(creature.species);
+          // 背後攻撃のチャンス判定
+          const canBackstab = canAttackFromBehind(creature, other);
+          const creatureType = getSpeciesType(creature.species);
 
-        // グリーン系は仲間が近くにいると勇敢になる
-        let braveryBonus = 0;
-        if (creatureType === "green" && greenAlliesInfo) {
-          // 近くの仲間の数に応じて勇気ボーナス
-          const nearbyAllies = greenAlliesInfo.allies.filter((ally) => {
-            const dx = ally.position.x - creature.position.x;
-            const dy = ally.position.y - creature.position.y;
-            return Math.sqrt(dx * dx + dy * dy) < 100; // 100px以内の仲間
-          });
-          braveryBonus = Math.min(0.3, nearbyAllies.length * 0.1); // 最大+0.3
-        }
+          // グリーン系は仲間が近くにいると勇敢になる
+          let braveryBonus = 0;
+          if (creatureType === "green" && greenAlliesInfo) {
+            // 近くの仲間の数に応じて勇気ボーナス
+            const nearbyAllies = greenAlliesInfo.allies.filter((ally) => {
+              const dx = ally.position.x - creature.position.x;
+              const dy = ally.position.y - creature.position.y;
+              return Math.sqrt(dx * dx + dy * dy) < 100; // 100px以内の仲間
+            });
+            braveryBonus = Math.min(0.3, nearbyAllies.length * 0.1); // 最大+0.3
+          }
 
-        // レッドが無防備状態なら攻撃チャンス
-        const isTargetVulnerable =
-          getSpeciesType(other.species) === "red" && other.isVulnerable;
+          // レッドが無防備状態なら攻撃チャンス
+          const isTargetVulnerable =
+            getSpeciesType(other.species) === "red" && other.isVulnerable;
 
-        // 勇敢さに基づいて正面から向かっていく確率を計算
-        // bravery 0.0 = 0%, 0.5 = 10%, 1.0 = 50%の確率で向かう
-        const effectiveBravery = bravery + braveryBonus;
-        const chargeChance = Math.pow(effectiveBravery, 2) * 0.5; // 0～50%
-        const shouldCharge =
-          Math.random() < chargeChance && creature.energy > 40;
+          // 勇敢さに基づいて正面から向かっていく確率を計算
+          // bravery 0.0 = 0%, 0.5 = 10%, 1.0 = 50%の確率で向かう
+          const effectiveBravery = bravery + braveryBonus;
+          const chargeChance = Math.pow(effectiveBravery, 2) * 0.5; // 0～50%
+          const shouldCharge =
+            Math.random() < chargeChance && creature.energy > 40;
 
-        if (isTargetVulnerable && creatureType === "green") {
-          // 無防備なレッドには積極的に攻撃
-          const attackForce = 1.2 + braveryBonus;
-          forceX += dirX * attackForce;
-          forceY += dirY * attackForce;
-        } else if (shouldCharge && creatureType === "green") {
-          // 勇敢さにより正面から向かっていく！
-          const chargeForce = effectiveBravery * closenessFactor * 1.0;
-          forceX += dirX * chargeForce;
-          forceY += dirY * chargeForce;
-        } else if (
-          canBackstab &&
-          stealthAttack > 0.3 &&
-          creatureType === "green"
-        ) {
-          // 背後から攻撃できる位置にいる！接近する
-          const backstabForce = stealthAttack * closenessFactor * 1.2;
-          forceX += dirX * backstabForce;
-          forceY += dirY * backstabForce;
-        } else if (
-          (counterAttack + braveryBonus > 0.5 ||
-            bravery + braveryBonus > 0.7) &&
-          creature.energy > 70
-        ) {
-          // 反撃傾向が高く、体力がある場合は逃げずに向かう（仲間がいると強気）
-          const counterForce =
-            (counterAttack + braveryBonus) * closenessFactor * 0.5;
-          // レッドの背後に回り込むように動く
-          const perpX = -dirY; // 垂直方向
-          const perpY = dirX;
-          forceX += perpX * counterForce;
-          forceY += perpY * counterForce;
-        } else {
-          // 通常の逃走行動（仲間が近くにいると逃げにくくなる）
-          const adjustedFleeStrength = Math.max(0.3, 1.0 - braveryBonus);
-          const fleeForce =
-            closenessFactor *
-            (0.8 + program.fleeWhenWeak * 0.5) *
-            adjustedFleeStrength;
-          forceX -= dirX * fleeForce;
-          forceY -= dirY * fleeForce;
+          if (isTargetVulnerable && creatureType === "green") {
+            // 無防備なレッドには積極的に攻撃
+            const attackForce = 1.2 + braveryBonus;
+            forceX += dirX * attackForce;
+            forceY += dirY * attackForce;
+          } else if (shouldCharge && creatureType === "green") {
+            // 勇敢さにより正面から向かっていく！
+            const chargeForce = effectiveBravery * closenessFactor * 1.0;
+            forceX += dirX * chargeForce;
+            forceY += dirY * chargeForce;
+          } else if (
+            canBackstab &&
+            stealthAttack > 0.3 &&
+            creatureType === "green"
+          ) {
+            // 背後から攻撃できる位置にいる！接近する
+            const backstabForce = stealthAttack * closenessFactor * 1.2;
+            forceX += dirX * backstabForce;
+            forceY += dirY * backstabForce;
+          } else if (
+            (counterAttack + braveryBonus > 0.5 ||
+              bravery + braveryBonus > 0.7) &&
+            creature.energy > 70
+          ) {
+            // 反撃傾向が高く、体力がある場合は逃げずに向かう（仲間がいると強気）
+            const counterForce =
+              (counterAttack + braveryBonus) * closenessFactor * 0.5;
+            // レッドの背後に回り込むように動く
+            const perpX = -dirY; // 垂直方向
+            const perpY = dirX;
+            forceX += perpX * counterForce;
+            forceY += perpY * counterForce;
+          } else {
+            // 通常の逃走行動
+            const adjustedFleeStrength = Math.max(0.3, 1.0 - braveryBonus);
+            const fleeForce =
+              closenessFactor *
+              (0.8 + fleeWhenWeak * 0.5) *
+              adjustedFleeStrength *
+              fleeWhenWeak;
+            forceX -= dirX * fleeForce;
+            forceY -= dirY * fleeForce;
 
-          // 弱っている場合はさらに逃げる（背後攻撃傾向が低い場合のみ）
-          // ※逃走行動を選んだ場合のみ適用
-          if (creature.energy < 50 && stealthAttack < 0.5) {
-            const panicForce =
-              ((50 - creature.energy) / 50) * closenessFactor * 0.5;
-            forceX -= dirX * panicForce;
-            forceY -= dirY * panicForce;
+            // 弱っている場合はさらに逃げる（背後攻撃傾向が低い場合のみ）
+            if (creature.energy < 50 && stealthAttack < 0.5) {
+              const panicForce =
+                ((50 - creature.energy) / 50) *
+                closenessFactor *
+                0.5 *
+                fleeWhenWeak;
+              forceX -= dirX * panicForce;
+              forceY -= dirY * panicForce;
+            }
+          }
+
+          // 最も近い脅威を記録（fleeWhenWeak > 0 の場合のみ）
+          if (distance < nearestThreatDist) {
+            nearestThreatDist = distance;
+            nearestThreatX = dirX;
+            nearestThreatY = dirY;
           }
         }
-
-        // 最も近い脅威を記録
-        if (distance < nearestThreatDist) {
-          nearestThreatDist = distance;
-          nearestThreatX = dirX;
-          nearestThreatY = dirY;
-        }
+        // fleeWhenWeak が 0 なら何もしない（ただふらふらするだけ）
       } else if (iCanEatOther) {
         // ===== 捕食行動 =====
         // 鬼ごっこシステム: レッドは常にグリーンを追う（空腹度に関係なく）
@@ -526,10 +544,12 @@ export function calculateIntelligentMovement(
   }
 
   // ===== 脅威からの緊急逃走（近くに捕食者がいる場合） =====
-  if (nearestThreatDist < 60) {
+  // fleeWhenWeak が 0 の場合はスキップ（おバカモード）
+  const fleeWhenWeakForUrgent = program.fleeWhenWeak ?? 0;
+  if (fleeWhenWeakForUrgent > 0 && nearestThreatDist < 60) {
     const urgencyFactor = (60 - nearestThreatDist) / 60;
-    forceX -= nearestThreatX * urgencyFactor * 1.5;
-    forceY -= nearestThreatY * urgencyFactor * 1.5;
+    forceX -= nearestThreatX * urgencyFactor * 1.5 * fleeWhenWeakForUrgent;
+    forceY -= nearestThreatY * urgencyFactor * 1.5 * fleeWhenWeakForUrgent;
   }
 
   // ===== 境界回避 =====

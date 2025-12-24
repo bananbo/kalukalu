@@ -22,7 +22,7 @@ import {
   split,
   createRandomObstacles,
   checkObstacleCollision,
-  findSafeSpawnPosition,
+  separateCreatures,
 } from "../utils/ecosystemSimulation";
 import { calculateIntelligentMovement } from "../utils/intelligentMovement";
 import SoundManager from "../utils/SoundManager";
@@ -33,13 +33,19 @@ interface EcosystemCanvasProps {
   onCreatureUpdate: (creatures: Creature[]) => void;
 }
 
-const INITIAL_PLANT_COUNT = 30;
-const MAX_PLANTS = 50;
+const INITIAL_PLANT_COUNT = 10; // 植物発生量を1/3に削減
+const MAX_PLANTS = 17; // 最大植物数も1/3に削減
 const HUNGER_RATE = 0.015; // 空腹によるエネルギー減少率（ゆっくり）
-const REPLENISH_COOLDOWN = 300; // 補充のクールダウン（フレーム数、約5秒）
+const GREEN_REPLENISH_COOLDOWN = 300; // グリーン補充のクールダウン（5秒）
 const RED_REPLENISH_INTERVAL = 36000; // レッド族補充間隔（10分 = 600秒 = 36000フレーム）
 const RED_SPAWN_WHEN_GREEN_MANY = 1800; // グリーンが多い時のレッド追加間隔（30秒）
 const GREEN_THRESHOLD_FOR_RED_SPAWN = 6; // この数以上でレッド追加
+
+// セーフゾーン設定（画面下部中央、グリーンの登場位置付近）
+const SAFE_ZONE = {
+  height: 80, // 画面下端から80pxの高さ
+  // レッドはこのエリアに入れない、グリーンはこのエリアでスコアが稼げない
+};
 
 interface PointNotification {
   id: string;
@@ -193,35 +199,29 @@ const EcosystemCanvas = ({
       const canvasWidth = canvasRef.current?.clientWidth || 800;
       const canvasHeight = canvasRef.current?.clientHeight || 600;
 
-      // 新しい生物に安全な位置を設定（グリーン系と外来種）
+      // 種族に応じて登場位置を設定
+      // レッド族 = 画面上部中央、グリーン族 = 画面下部中央
       newCreatures = newCreatures.map((creature) => {
         const speciesType = getSpeciesType(creature.species);
-
-        // 外来種（isNewArrival）は画面下中央から登場
-        if (creature.isNewArrival) {
+        if (speciesType === "red") {
+          // レッド族は画面上部中央から登場
           return {
             ...creature,
             position: {
-              x: canvasWidth / 2, // 画面中央
+              x: canvasWidth / 2 + (Math.random() - 0.5) * 100,
+              y: 50, // 画面上端から50px下
+            },
+          };
+        } else {
+          // グリーン族は画面下部中央から登場
+          return {
+            ...creature,
+            position: {
+              x: canvasWidth / 2 + (Math.random() - 0.5) * 100,
               y: canvasHeight - 50, // 画面下端から50px上
             },
           };
         }
-
-        // グリーン系は安全な位置にスポーン
-        if (speciesType === "green") {
-          const safePosition = findSafeSpawnPosition(
-            [...survivingCreatures, ...creaturesRef.current],
-            canvasWidth,
-            canvasHeight,
-            "green"
-          );
-          return {
-            ...creature,
-            position: safePosition,
-          };
-        }
-        return creature;
       });
 
       // 登場アニメーション用にIDを記録（Refで管理）
@@ -235,7 +235,12 @@ const EcosystemCanvas = ({
 
       creaturesRef.current = [...survivingCreatures, ...newCreatures];
       console.log(
-        `Added ${newCreatures.length} new creatures from external source (safe spawn)`
+        `Added ${newCreatures.length} new creatures from external source (safe spawn):`,
+        newCreatures.map((c) => ({
+          name: c.name,
+          species: c.species,
+          id: c.id.substring(0, 20),
+        }))
       );
     } else if (survivingCreatures.length !== creaturesRef.current.length) {
       // 削除のみ
@@ -332,11 +337,12 @@ const EcosystemCanvas = ({
 
     const currentIds = new Set(creatures.map((c) => c.id));
 
-    // 新しく追加された生物を検出
+    // 新しく追加された生物を検出（YouTubeからの外来種のみ）
     const newCreatures = creatures.filter(
       (c) =>
         !lastCreatureIdsRef.current!.has(c.id) &&
         c.isNewArrival &&
+        c.isFromYouTube && // YouTubeコメントからの生成のみ
         c.author !== "システム" &&
         c.author !== "system" &&
         c.author !== "System"
@@ -396,6 +402,37 @@ const EcosystemCanvas = ({
         canvasHeight,
         MAX_PLANTS
       );
+
+      // 障害物の移動更新
+      const MOVE_RANGE = 100; // 左右に動く範囲
+      obstaclesRef.current = obstaclesRef.current.map((obstacle) => {
+        if (
+          obstacle.moveSpeed &&
+          obstacle.moveDirection !== undefined &&
+          obstacle.originalX !== undefined
+        ) {
+          let newX =
+            obstacle.position.x + obstacle.moveSpeed * obstacle.moveDirection;
+          let newDirection = obstacle.moveDirection;
+
+          // 移動範囲を超えたら反転
+          if (newX > obstacle.originalX + MOVE_RANGE) {
+            newX = obstacle.originalX + MOVE_RANGE;
+            newDirection = -1;
+          } else if (newX < obstacle.originalX - MOVE_RANGE) {
+            newX = obstacle.originalX - MOVE_RANGE;
+            newDirection = 1;
+          }
+
+          return {
+            ...obstacle,
+            position: { ...obstacle.position, x: newX },
+            moveDirection: newDirection,
+          };
+        }
+        return obstacle;
+      });
+      setObstacles(obstaclesRef.current);
 
       let updatedCreatures: Creature[] = currentCreatures.map(
         (creature): Creature => {
@@ -495,6 +532,18 @@ const EcosystemCanvas = ({
             newY = -margin;
           }
 
+          // セーフゾーン判定（レッド族は下部に入れない）
+          const safeZoneTop = canvasHeight - SAFE_ZONE.height;
+          const speciesType = getSpeciesType(creature.species);
+          if (speciesType === "red" && newY > safeZoneTop) {
+            // レッドはセーフゾーンに入れない - 押し戻す
+            newY = safeZoneTop;
+            newVelocityY = -Math.abs(newVelocityY) * 0.5; // 跳ね返る
+          }
+
+          // セーフゾーン内にいるかどうかをチェック
+          const isInSafeZone = newY > safeZoneTop;
+
           // 食物連鎖に基づく空腹処理
           const tier = getFoodChainTier(creature.species);
           let hungerPenalty = 0;
@@ -519,12 +568,19 @@ const EcosystemCanvas = ({
           const newSplitCooldown = Math.max(0, creature.splitCooldown - 1);
 
           // 生存ポイントの計算（10秒 = 600フレーム）
-          const newSurvivalFrames = (creature.survivalFrames || 0) + 1;
-          const survivalPointsToAdd =
-            Math.floor(newSurvivalFrames / 600) -
-            Math.floor((creature.survivalFrames || 0) / 600);
-          const newSurvivalPoints =
-            (creature.survivalPoints || 0) + survivalPointsToAdd;
+          // セーフゾーン内ではスコアが稼げない
+          let newSurvivalFrames = creature.survivalFrames || 0;
+          let survivalPointsToAdd = 0;
+          let newSurvivalPoints = creature.survivalPoints || 0;
+
+          if (!isInSafeZone) {
+            // セーフゾーン外のみスコア加算
+            newSurvivalFrames = newSurvivalFrames + 1;
+            survivalPointsToAdd =
+              Math.floor(newSurvivalFrames / 600) -
+              Math.floor((creature.survivalFrames || 0) / 600);
+            newSurvivalPoints = newSurvivalPoints + survivalPointsToAdd;
+          }
 
           // 生存ポイント獲得時に通知を生成
           if (survivalPointsToAdd > 0) {
@@ -589,18 +645,24 @@ const EcosystemCanvas = ({
           const plant = currentPlants[j];
 
           if (!plant.isConsumed && checkPlantCollision(creature, plant)) {
-            const result = eatPlant(creature, plant);
+            const result = eatPlant(creature, plant, canvasHeight);
 
             if (result.canEat) {
-              // 植物を食べた（エネルギーと植物ポイントを獲得）
+              // 植物を食べた（エネルギー獲得、セーフゾーン外のみポイント獲得）
+              const creatureSafeZoneTop = canvasHeight - SAFE_ZONE.height;
+              const isCreatureInSafeZone =
+                creature.position.y > creatureSafeZoneTop;
+              const pointsGain = isCreatureInSafeZone
+                ? 0
+                : result.plantPointsGain;
+
               updatedCreatures[i] = {
                 ...updatedCreatures[i],
                 energy: Math.min(
                   100,
                   updatedCreatures[i].energy + result.energyGain
                 ),
-                plantPoints:
-                  updatedCreatures[i].plantPoints + result.plantPointsGain,
+                plantPoints: updatedCreatures[i].plantPoints + pointsGain,
               };
               currentPlants[j] = {
                 ...plant,
@@ -611,15 +673,15 @@ const EcosystemCanvas = ({
               // 食事音を再生
               soundManager.current.play("eat", 0.6);
 
-              // 植物ポイント獲得時に通知を生成
-              if (result.plantPointsGain > 0) {
+              // 植物ポイント獲得時に通知を生成（セーフゾーン外のみ）
+              if (pointsGain > 0) {
                 setPointNotifications((prev) => [
                   ...prev,
                   {
                     id: `plant-${creature.id}-${Date.now()}`,
                     x: creature.position.x,
                     y: creature.position.y,
-                    amount: result.plantPointsGain,
+                    amount: pointsGain,
                     createdAt: Date.now(),
                   },
                 ]);
@@ -670,6 +732,35 @@ const EcosystemCanvas = ({
           const c2 = updatedCreatures[j];
 
           if (checkCollision(c1, c2)) {
+            // キャラクター同士の押し戻し処理（重なり防止）
+            const separation = separateCreatures(c1, c2);
+
+            // 無敵状態のクリーチャーは戦闘・繁殖をスキップ
+            const now = Date.now();
+            const c1Invulnerable =
+              c1.invulnerableUntil && now < c1.invulnerableUntil;
+            const c2Invulnerable =
+              c2.invulnerableUntil && now < c2.invulnerableUntil;
+
+            // 押し戻し力を適用（衝突している場合のみ）
+            if (separation.c1Push.x !== 0 || separation.c1Push.y !== 0) {
+              updatedCreatures[i] = {
+                ...c1,
+                position: {
+                  x: c1.position.x + separation.c1Push.x,
+                  y: c1.position.y + separation.c1Push.y,
+                },
+              };
+              updatedCreatures[j] = {
+                ...c2,
+                position: {
+                  x: c2.position.x + separation.c2Push.x,
+                  y: c2.position.y + separation.c2Push.y,
+                },
+              };
+            }
+
+            // どちらかが無敵なら戦闘はスキップ（繁殖はOK）
             // 同じ種族なら繁殖を試みる（レッド系の共食い以外）
             if (canReproduce(c1, c2)) {
               const baby = reproduce(c1, c2, canvasWidth, canvasHeight);
@@ -698,6 +789,11 @@ const EcosystemCanvas = ({
               };
             } else {
               // 戦闘・捕食処理
+
+              // どちらかが無敵状態なら戦闘をスキップ
+              if (c1Invulnerable || c2Invulnerable) {
+                continue;
+              }
 
               // グリーンの反撃判定（逃げずに立ち向かっている場合）
               const c1Type = getSpeciesType(c1.species);
@@ -947,10 +1043,13 @@ const EcosystemCanvas = ({
       }
       updatedCreatures = updatedCreatures.filter((c) => c.energy > 0);
 
-      // グリーンの分裂チェック（植物ポイントベース）
+      // グリーンの分裂チェック（植物ポイントベース、セーフゾーン内のみ）
       for (let i = 0; i < updatedCreatures.length; i++) {
         const creature = updatedCreatures[i];
-        if (canSplit(creature)) {
+        if (canSplit(creature, canvasHeight)) {
+          console.log(
+            `[SPLIT] ${creature.name} is splitting! plantPoints=${creature.plantPoints}, energy=${creature.energy}`
+          );
           const result = split(creature, canvasWidth, canvasHeight);
           newBabies.push(result.clone);
 
@@ -1003,14 +1102,16 @@ const EcosystemCanvas = ({
           .catch((err) => console.error("Failed to auto-replenish Red:", err));
       }
 
-      // グリーン族の自動補充（クールダウン付き）
+      // グリーン族の自動補充（クールダウン付き、5秒に1回）
       if (
         greenCount < MIN_GREEN_COUNT &&
         replenishCooldownRef.current.green === 0
       ) {
         const needed = MIN_GREEN_COUNT - greenCount;
-        console.log(`Replenishing ${needed} Green creatures...`);
-        replenishCooldownRef.current.green = REPLENISH_COOLDOWN;
+        console.log(
+          `Replenishing ${needed} Green creatures (5sec cooldown)...`
+        );
+        replenishCooldownRef.current.green = GREEN_REPLENISH_COOLDOWN;
         fetch("http://localhost:3001/api/creature/generate-green", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1162,58 +1263,6 @@ const EcosystemCanvas = ({
     };
   }, []); // 依存配列を空にして一度だけ実行
 
-  // 種族ごとの数を集計
-  const speciesCount = creatures.reduce((acc, creature) => {
-    acc[creature.species] = (acc[creature.species] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  // 植物の数を集計
-  const activePlantCount = plants.filter((p) => !p.isConsumed).length;
-
-  // --- レッドの巣の定義 ---
-  const RED_NEST = {
-    x: 120,
-    y: 120,
-    radius: 38,
-  };
-
-  // SVG内で巣を描画する関数
-  const renderRedNest = () => (
-    <g className="red-nest">
-      {/* Outer Danger Zone (Rotating dashed ring) */}
-      <circle
-        cx={RED_NEST.x}
-        cy={RED_NEST.y}
-        r={RED_NEST.radius}
-        fill="transparent"
-        stroke="#ef4444"
-        strokeWidth={2}
-        strokeDasharray="8 6"
-        className="nest-ring-outer"
-      />
-      {/* Inner Hazard Area (Pulsing) */}
-      <circle
-        cx={RED_NEST.x}
-        cy={RED_NEST.y}
-        r={RED_NEST.radius * 0.7}
-        fill="rgba(239, 68, 68, 0.2)"
-        stroke="none"
-        className="nest-ring-inner"
-      />
-      {/* Core (Solid) */}
-      <circle
-        cx={RED_NEST.x}
-        cy={RED_NEST.y}
-        r={RED_NEST.radius * 0.35}
-        fill="#ef4444"
-        fillOpacity="0.8"
-        stroke="none"
-        filter="drop-shadow(0 0 8px #ef4444)"
-      />
-    </g>
-  );
-
   return (
     <div className="ecosystem-canvas" ref={canvasRef}>
       <svg className="ecosystem-svg" width="100%" height="100%">
@@ -1349,8 +1398,40 @@ const EcosystemCanvas = ({
           );
         })}
 
-        {/* レッドの巣を描画 */}
-        {renderRedNest()}
+        {/* セーフゾーンを描画 */}
+        <rect
+          x={0}
+          y={
+            canvasRef.current?.clientHeight
+              ? canvasRef.current.clientHeight - SAFE_ZONE.height
+              : 520
+          }
+          width="100%"
+          height={SAFE_ZONE.height}
+          fill="rgba(74, 222, 128, 0.1)"
+          stroke="rgba(74, 222, 128, 0.4)"
+          strokeWidth={2}
+          strokeDasharray="10 5"
+          className="safe-zone"
+        />
+        <text
+          x={
+            canvasRef.current?.clientWidth
+              ? canvasRef.current.clientWidth / 2
+              : 400
+          }
+          y={
+            canvasRef.current?.clientHeight
+              ? canvasRef.current.clientHeight - SAFE_ZONE.height + 18
+              : 538
+          }
+          fill="rgba(74, 222, 128, 0.7)"
+          fontSize="12"
+          fontWeight="bold"
+          textAnchor="middle"
+        >
+          🛡️ セーフゾーン（スコア無効）
+        </text>
       </svg>
 
       {/* キャラクター追加位置マーク（画面下部中央） */}
@@ -1359,97 +1440,8 @@ const EcosystemCanvas = ({
         <div className="spawn-label">キャラ追加位置</div>
       </div>
 
-      {/* グリーンスコアボード（右下オーバーレイ） */}
-      <div className="green-scoreboard">
-        <div className="scoreboard-header">グリーン スコア</div>
-        <div className="scoreboard-list">
-          {(() => {
-            // typeIDごとにグリーンをグループ化
-            const greenCreatures = creatures.filter(
-              (c) => getSpeciesType(c.species) === "green"
-            );
-            const grouped = new Map<
-              string,
-              {
-                baseName: string;
-                totalScore: number;
-                count: number;
-                typeId: string;
-              }
-            >();
-
-            greenCreatures.forEach((c) => {
-              const score = (c.survivalPoints || 0) + (c.plantPoints || 0);
-
-              // typeIdでグループ化
-              if (grouped.has(c.typeId)) {
-                const existing = grouped.get(c.typeId)!;
-                existing.totalScore += score;
-                existing.count += 1;
-              } else {
-                // 「分身」を除去して元の名前を取得
-                const baseName = c.name.replace(/分身+$/, "");
-                grouped.set(c.typeId, {
-                  baseName,
-                  totalScore: score,
-                  count: 1,
-                  typeId: c.typeId,
-                });
-              }
-            });
-
-            // スコアで降順ソートして表示
-            return Array.from(grouped.values())
-              .sort((a, b) => b.totalScore - a.totalScore)
-              .map((g) => {
-                const displayName =
-                  g.baseName.length > 6
-                    ? g.baseName.substring(0, 6) + "…"
-                    : g.baseName;
-                return (
-                  <div key={g.typeId} className="scoreboard-item">
-                    <span className="scoreboard-name" title={g.typeId}>
-                      {displayName}
-                      {g.count > 1 && (
-                        <span className="scoreboard-count">×{g.count}</span>
-                      )}
-                    </span>
-                    <span className="scoreboard-score">{g.totalScore}pt</span>
-                  </div>
-                );
-              });
-          })()}
-        </div>
-      </div>
-
       {/* オーバーレイ情報（シンプルにまとめ） */}
       <div className="canvas-overlay">
-        {/* コンパクトなステータスバー */}
-        <div className="compact-status">
-          <span>
-            <span className="icon icon-creature"></span> {creatures.length}
-          </span>
-          <span>
-            <span className="icon icon-leaf"></span> {activePlantCount}
-          </span>
-          {Object.entries(speciesCount).map(([species, count]) => {
-            const isRed = species.includes("レッド") || species.includes("red");
-            return (
-              <span
-                key={species}
-                className={isRed ? "red-count" : "green-count"}
-              >
-                {isRed ? (
-                  <span className="icon icon-red"></span>
-                ) : (
-                  <span className="icon icon-green"></span>
-                )}{" "}
-                {count}
-              </span>
-            );
-          })}
-        </div>
-
         {/* 外来種登場アラート */}
         {newArrival && (
           <div className="new-arrival-alert">

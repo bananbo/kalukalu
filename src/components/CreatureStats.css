@@ -382,3 +382,25 @@
     padding: 0.3rem;
   }
 }
+
+/* プログレスバー（30秒カウントダウン） */
+.notification-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 0 0 10px 10px;
+  overflow: hidden;
+}
+
+.notification-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #16a34a);
+  transition: width 0.1s linear;
+}
+
+.red-card .notification-progress-fill {
+  background: linear-gradient(90deg, #ef4444, #dc2626);
+}

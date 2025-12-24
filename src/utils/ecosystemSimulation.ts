@@ -11,6 +11,9 @@ import {
   isInFieldOfView,
 } from "../types/creature";
 
+// セーフゾーンの高さ（画面下部からの高さ）
+const SAFE_ZONE_HEIGHT = 80;
+
 // 距離計算
 export function distance(
   x1: number,
@@ -74,50 +77,39 @@ export function checkObstacleCollision(
   return { collides: false, pushX: 0, pushY: 0 };
 }
 
-// ランダムな障害物を生成
+// ランダムな障害物を生成（少数で横長・薄型）
 export function createRandomObstacles(
-  count: number,
+  _count: number, // 無視（少数固定に）
   canvasWidth: number,
   canvasHeight: number
 ): Obstacle[] {
   const obstacles: Obstacle[] = [];
   const margin = 100; // 画面端からのマージン
+  const actualCount = 2 + Math.floor(Math.random() * 2); // 2-3個のみ
 
-  for (let i = 0; i < count; i++) {
-    const types: Array<"wall" | "rock" | "tree"> = ["wall", "rock", "tree"];
-    const type = types[Math.floor(Math.random() * types.length)];
-
-    let width: number, height: number;
-
-    if (type === "wall") {
-      // 壁は細長い
-      if (Math.random() > 0.5) {
-        width = 20 + Math.random() * 30;
-        height = 80 + Math.random() * 120;
-      } else {
-        width = 80 + Math.random() * 120;
-        height = 20 + Math.random() * 30;
-      }
-    } else if (type === "rock") {
-      // 岩はほぼ正方形
-      const size = 40 + Math.random() * 60;
-      width = size;
-      height = size * (0.8 + Math.random() * 0.4);
-    } else {
-      // 木は中くらい
-      width = 30 + Math.random() * 40;
-      height = 30 + Math.random() * 40;
-    }
+  for (let i = 0; i < actualCount; i++) {
+    // すべて横長で薄い障害物
+    const width = 150 + Math.random() * 200; // 150-350の幅
+    const height = 12 + Math.random() * 8; // 12-20の高さ（薄い）
 
     const x = margin + Math.random() * (canvasWidth - 2 * margin - width);
-    const y = margin + Math.random() * (canvasHeight - 2 * margin - height);
+    const y =
+      margin +
+      Math.random() * (canvasHeight - 2 * margin - height - SAFE_ZONE_HEIGHT);
+
+    // 移動方向と速度を設定
+    const moveDirection = Math.random() > 0.5 ? 1 : -1; // 左右のどちらに動くか
+    const moveSpeed = 0.3 + Math.random() * 0.4; // 0.3-0.7の速度
 
     obstacles.push({
       id: `obstacle-${i}-${Date.now()}`,
       position: { x, y },
       width,
       height,
-      type,
+      type: "wall" as const, // すべてwallタイプ
+      moveDirection, // 移動方向
+      moveSpeed, // 移動速度
+      originalX: x, // 元の位置（移動範囲の基準）
     });
   }
 
@@ -234,6 +226,44 @@ export function findSafeSpawnPosition(
   }
 
   return bestPosition;
+}
+
+// キャラクター同士の衝突時に押し戻す処理
+export function separateCreatures(c1: Creature, c2: Creature): {
+  c1Push: { x: number; y: number };
+  c2Push: { x: number; y: number };
+} {
+  const dx = c2.position.x - c1.position.x;
+  const dy = c2.position.y - c1.position.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  if (dist === 0) {
+    // 完全に重なっている場合、ランダムな方向に押し出す
+    const angle = Math.random() * Math.PI * 2;
+    return {
+      c1Push: { x: Math.cos(angle) * -5, y: Math.sin(angle) * -5 },
+      c2Push: { x: Math.cos(angle) * 5, y: Math.sin(angle) * 5 },
+    };
+  }
+
+  const minDist = (c1.attributes.size + c2.attributes.size) * 2.5;
+  const overlap = minDist - dist;
+
+  if (overlap > 0) {
+    const pushForce = overlap * 0.5;
+    const pushX = (dx / dist) * pushForce;
+    const pushY = (dy / dist) * pushForce;
+
+    return {
+      c1Push: { x: -pushX, y: -pushY },
+      c2Push: { x: pushX, y: pushY },
+    };
+  }
+
+  return {
+    c1Push: { x: 0, y: 0 },
+    c2Push: { x: 0, y: 0 },
+  };
 }
 
 // 戦闘処理（鬼ごっこシステム）
@@ -411,7 +441,8 @@ export function handleCombat(
 // 植物を食べる処理
 export function eatPlant(
   creature: Creature,
-  plant: Plant
+  plant: Plant,
+  _canvasHeight: number = 600 // 後方互換性のため残す（未使用）
 ): { energyGain: number; canEat: boolean; plantPointsGain: number } {
   const type = getSpeciesType(creature.species);
 
@@ -428,24 +459,38 @@ export function eatPlant(
   const intelligenceBonus = 1 + creature.attributes.intelligence * 0.05;
   const energyGain = Math.floor(plant.energy * intelligenceBonus);
 
-  // 植物を食べると1ポイント獲得
-  return { energyGain, canEat: true, plantPointsGain: 1 };
+  // 植物のポイントはサイズによって変わる
+  // size 3-7 → 1-5ポイント（大きい植物ほど高得点）
+  const sizeRatio = (plant.size - 3) / 4; // 0-1 (大きいほど高い)
+  const plantPointsGain = Math.max(1, Math.floor(1 + sizeRatio * 4)); // 1-5ポイント
+
+  return { energyGain, canEat: true, plantPointsGain };
 }
 
 // 植物の寿命（フレーム数）- 約60秒
 const PLANT_LIFESPAN = 3600; // 60fps * 60秒
 
-// 植物を生成（画面端から一定距離離れた位置に）
+// 植物を生成（画面端とセーフゾーンから一定距離離れた位置に）
 export function createPlant(canvasWidth: number, canvasHeight: number): Plant {
   const MARGIN = 50; // 画面端からの最小距離
+  const maxY = canvasHeight - SAFE_ZONE_HEIGHT - MARGIN; // セーフゾーンを避ける
+  const y = MARGIN + Math.random() * (maxY - MARGIN);
+
+  // 画面上部ほど大きな植物（危険＝高ポイント）
+  // y=MARGIN → size 7-9, y=maxY → size 3-5
+  const positionRatio = 1 - (y - MARGIN) / (maxY - MARGIN); // 0-1 (上ほど高い)
+  const baseSize = 3 + positionRatio * 4; // 3-7のベース
+  const sizeVariation = Math.random() * 2; // ±1の変動
+  const size = Math.max(3, Math.min(9, baseSize + sizeVariation)); // 3-9にクランプ
+
   return {
     id: `plant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     position: {
       x: MARGIN + Math.random() * (canvasWidth - MARGIN * 2),
-      y: MARGIN + Math.random() * (canvasHeight - MARGIN * 2),
+      y: y,
     },
     energy: 8 + Math.random() * 7, // 8-15のエネルギー
-    size: 3 + Math.random() * 4, // 3-7のサイズ
+    size: size, // 上部ほど大きい植物（高ポイント）
     regrowthTimer: 0,
     isConsumed: false,
     lifespanTimer: PLANT_LIFESPAN, // 寿命タイマー初期化
@@ -474,12 +519,13 @@ export function updatePlants(
 ): Plant[] {
   const REGROWTH_TIME = 300; // 5秒で再生
   const MARGIN = 50; // 画面端からの最小距離
+  const maxY = canvasHeight - SAFE_ZONE_HEIGHT - MARGIN; // セーフゾーンを避ける
 
   return plants.map((plant) => {
     if (plant.isConsumed) {
       const newTimer = plant.regrowthTimer + 1;
       if (newTimer >= REGROWTH_TIME) {
-        // 再生（画面端を避けた位置に）- 寿命もリセット
+        // 再生（画面端とセーフゾーンを避けた位置に）- 寿命もリセット
         return {
           ...plant,
           isConsumed: false,
@@ -487,7 +533,7 @@ export function updatePlants(
           energy: 8 + Math.random() * 7,
           position: {
             x: MARGIN + Math.random() * (canvasWidth - MARGIN * 2),
-            y: MARGIN + Math.random() * (canvasHeight - MARGIN * 2),
+            y: MARGIN + Math.random() * (maxY - MARGIN), // セーフゾーンを避ける
           },
           lifespanTimer: PLANT_LIFESPAN, // 寿命をリセット
         };
@@ -544,24 +590,31 @@ export function canReproduce(c1: Creature, c2: Creature): boolean {
 
 /**
  * 社会性（social）に応じた分裂に必要なポイントを計算
- * social=0 → 10ポイント必要
- * social=10 → 6ポイント必要
+ * 基本を2倍にして、
+ * social=0 → 20ポイント必要
+ * social=10 → 12ポイント必要
  */
 export function getSplitRequirement(creature: Creature): number {
-  const socialBonus = Math.floor(creature.attributes.social * 0.4); // 0〜4ポイント減少
-  return Math.max(6, 10 - socialBonus); // 最低6ポイント必要
+  const socialBonus = Math.floor(creature.attributes.social * 0.8); // 0〜8ポイント減少
+  return Math.max(12, 20 - socialBonus); // 最低12ポイント必要
 }
 
-// グリーンの分裂チェック（植物ポイントベース）
-export function canSplit(creature: Creature): boolean {
+// グリーンの分裂チェック（植物ポイントベース、セーフゾーン内のみ）
+export function canSplit(creature: Creature, canvasHeight?: number): boolean {
   const type = getSpeciesType(creature.species);
   const requiredPoints = getSplitRequirement(creature);
-  // グリーンのみ分裂可能
+
+  // セーフゾーン内かどうかのチェック（canvasHeightが指定された場合）
+  const safeZoneTop = canvasHeight ? canvasHeight - SAFE_ZONE_HEIGHT : 0;
+  const isInSafeZone = canvasHeight ? creature.position.y >= safeZoneTop : true;
+
+  // グリーンのみ、セーフゾーン内でのみ分裂可能
   return (
     type === "green" &&
     creature.splitCooldown <= 0 &&
-    creature.plantPoints >= requiredPoints && // 社会性に応じたポイント
-    creature.energy > 60 // 十分なエネルギーが必要
+    creature.plantPoints >= requiredPoints && // 社会性に応じたポイント（2倍）
+    creature.energy > 120 && // エネルギーも2倍必要
+    isInSafeZone // セーフゾーン内でのみ分裂可能
   );
 }
 

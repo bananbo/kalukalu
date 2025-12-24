@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { DUMB_BEHAVIOR_PROGRAM, initialSpeciesData } from "./initialSpecies";
 
 interface BehaviorProgram {
   approachAlly: number;
@@ -107,6 +108,7 @@ interface Creature {
   comment: string;
   species: string; // 'レッド族' または 'グリーン族'
   isNewArrival?: boolean;
+  isFromYouTube?: boolean; // YouTube コメントからの生成か
   reproductionCooldown: number;
   reproductionHistory: { [partnerId: string]: number };
   wanderAngle: number;
@@ -263,18 +265,27 @@ export class CreatureGenerator {
     },
     options?: {
       species?: "グリーン族" | "レッド族";
+      isDumb?: boolean; // おバカモード（ランダム移動のみ）
     }
   ): Promise<Creature> {
     // デバッグモードまたはGeminiが初期化されていない場合
     if (this.debugMode || !this.genAI) {
-      return this.generateDebugCreature(comment, options?.species);
+      return this.generateDebugCreature(
+        comment,
+        options?.species,
+        options?.isDumb
+      );
     }
 
     try {
       return await this.generateWithAI(comment, options?.species);
     } catch (error) {
       console.error("AI generation failed, falling back to debug mode:", error);
-      return this.generateDebugCreature(comment, options?.species);
+      return this.generateDebugCreature(
+        comment,
+        options?.species,
+        options?.isDumb
+      );
     }
   }
 
@@ -333,10 +344,16 @@ export class CreatureGenerator {
 コメント投稿者: ${comment.author}
 コメント内容: ${comment.message}
 
+【重要】キャラクター名の生成について：
+- 投稿者名「${comment.author}」を参考にした名前を提案してください
+- 例: 投稿者名が「太郎」なら「タロウティー」、「sakura」なら「サクラティー」など
+- 投稿者名 + 「ティー」「茶」などを組み合わせるとゲームの世界観に合います
+- コメント内容からも特徴を取り入れてください
+
 以下のJSON形式で生物のパラメータを生成してください：
 
 {
-  "name": "生物の名前（コメントから連想される面白い名前）",
+  "name": "生物の名前（投稿者名を参考に、ティー系の名前を提案）",
   "attributes": {
     "speed": 0-10の数値（コメントに「速い」「素早い」などあれば高く）,
     "size": 0-10の数値（「大きい」「巨大」などあれば高く）,
@@ -522,7 +539,8 @@ export class CreatureGenerator {
       message: string;
       timestamp: Date;
     },
-    speciesParam?: "グリーン族" | "レッド族"
+    speciesParam?: "グリーン族" | "レッド族",
+    isDumb?: boolean // おバカモード
   ): Creature {
     // コメントから簡易的にパラメータを抽出（デバッグ用）
     const message = comment.message.toLowerCase();
@@ -599,26 +617,24 @@ export class CreatureGenerator {
           : "solitary",
     };
 
-    // キャラクターを画面下部から追加（矢印マーク位置付近）
+    // キャラクターを画面外下部から追加（画面に入ってくる演出）
     const position = {
       x: 400 + (Math.random() - 0.5) * 200, // 中央付近（300-500の範囲）
-      y: 550, // 画面下部
+      y: 650, // 画面外下部（ゆっくり画面内に入ってくる）
     };
 
     const velocity = {
       x: (Math.random() - 0.5) * attributes.speed * 0.5,
-      y: (Math.random() - 0.5) * attributes.speed * 0.5,
+      y: -1 - Math.random() * 0.5, // 上向き（画面内に入る方向）
     };
 
     // 長所・短所を生成
     const traits = this.generateTraits(attributes, appearance, behavior);
 
-    // 動作プログラムを生成
-    const behaviorProgram = this.generateBehaviorProgram(
-      comment.message,
-      attributes,
-      behavior
-    );
+    // 動作プログラムを生成（おバカモードの場合はDUMB_BEHAVIOR_PROGRAMを使用）
+    const behaviorProgram = isDumb
+      ? { ...DUMB_BEHAVIOR_PROGRAM }
+      : this.generateBehaviorProgram(comment.message, attributes, behavior);
 
     // パラメータの合計を調整（バランス調整）
     const balancedAttributes = this.balanceAttributes(attributes);
@@ -787,99 +803,12 @@ export class CreatureGenerator {
   }
 
   private generateName(
-    message: string,
+    _message: string,
     author: string,
-    attributes?: Creature["attributes"]
+    _attributes?: Creature["attributes"]
   ): string {
-    // バリエーション豊かな名前パーツ
-    const prefixes = [
-      "プチ",
-      "モフ",
-      "ピカ",
-      "コロ",
-      "ムニ",
-      "ポヨ",
-      "フワ",
-      "チビ",
-      "ヌク",
-      "モコ",
-      "プル",
-      "クリ",
-      "パチ",
-      "マル",
-      "スベ",
-      "トロ",
-      "ボイ",
-      "ニャ",
-      "ワイ",
-      "スク",
-      "モリ",
-      "サラ",
-      "ヒラ",
-      "ゾロ",
-    ];
-
-    const suffixes = [
-      "スライム",
-      "ビーンズ",
-      "モチ",
-      "ッチ",
-      "マル",
-      "ポン",
-      "リン",
-      "ラン",
-      "ニョン",
-      "ロン",
-      "タン",
-      "ビン",
-      "モン",
-      "クン",
-      "プー",
-      "ーズ",
-      "ィー",
-      "アン",
-      "エン",
-      "ーム",
-      "ィア",
-      "エア",
-      "マル",
-      "ボー",
-    ];
-
-    // メッセージと作者名からハッシュを生成
-    const hash1 = this.simpleHash(message + author);
-    const hash2 = this.simpleHash(author + message + "suffix");
-
-    const prefix = prefixes[hash1 % prefixes.length];
-    const suffix = suffixes[hash2 % suffixes.length];
-    const baseName = prefix + suffix;
-
-    // 属性があれば最も高い属性の形容詞を追加
-    const attributeAdjectives: { [key: string]: string[] } = {
-      speed: ["稲妻", "電光", "スピード", "韋駄天"],
-      size: ["巨大", "ビッグ", "メガ", "デカ"],
-      strength: ["剛力", "パワー", "最強", "親方"],
-      intelligence: ["賢者", "天才", "戦略", "インテリ"],
-      social: ["群れ", "仲良し", "チーム", "絆"],
-    };
-
-    if (attributes) {
-      const attrEntries = Object.entries(attributes) as [string, number][];
-      const maxAttr = attrEntries.reduce((max, curr) =>
-        curr[1] > max[1] ? curr : max
-      );
-      const [maxAttrName, maxAttrValue] = maxAttr;
-
-      // 属性が7以上なら形容詞を追加
-      if (maxAttrValue >= 7 && attributeAdjectives[maxAttrName]) {
-        const adjectives = attributeAdjectives[maxAttrName];
-        const adjHash = this.simpleHash(message + author + "adj");
-        const adjective = adjectives[adjHash % adjectives.length];
-        return `${adjective}${baseName}`;
-      }
-    }
-
-    return baseName;
+    // ユーザー名をそのままキャラクター名として使用
+    return author;
   }
 
   private simpleHash(str: string): number {
@@ -979,13 +908,13 @@ export class CreatureGenerator {
   ): BehaviorProgram {
     const message_lower = message.toLowerCase();
 
-    // デフォルト値
-    let approachAlly = 0.5; // 同種族への接近度
-    let approachEnemy = -0.3; // 異種族への接近度
-    let fleeWhenWeak = 0.5; // 弱い時の逃走傾向
-    let aggressiveness = 0.3; // 攻撃性
-    let curiosity = 0.5; // 好奇心
-    let territoriality = 0.3; // 縄張り意識
+    // デフォルト値（明示されない限り「おバカ」= 逃げない、植物を追わない）
+    let approachAlly = 0; // 同種族への接近度（デフォルト：なし）
+    let approachEnemy = 0; // 異種族への接近度（デフォルト：なし）
+    let fleeWhenWeak = 0; // 弱い時の逃走傾向（デフォルト：逃げない）
+    let aggressiveness = 0; // 攻撃性（デフォルト：なし）
+    let curiosity = 1.0; // 好奇心（デフォルト：ランダム移動）
+    let territoriality = 0; // 縄張り意識（デフォルト：なし）
 
     // ===== キーワード辞書による動作プログラム調整 =====
 
@@ -1138,7 +1067,7 @@ export class CreatureGenerator {
       territoriality = Math.max(0, territoriality - 0.2);
     }
 
-    // 速い・俊敏系キーワード（逃走に影響）
+    // 速い・俊敏系キーワード（逃走に影響しない）
     const fastKeywords = [
       "速い",
       "早い",
@@ -1153,11 +1082,11 @@ export class CreatureGenerator {
       "nimble",
     ];
     if (fastKeywords.some((k) => message_lower.includes(k))) {
-      fleeWhenWeak = Math.min(1, fleeWhenWeak + 0.2); // 速いと逃げやすい
+      // 速い場合でも逃げる動作は明示的な指示がない限り行わない
       curiosity = Math.min(1, curiosity + 0.1);
     }
 
-    // 大きい・巨大系キーワード（攻撃性に影響）
+    // 大きい・巨大系キーワード（攻撃性に影響しない）
     const bigKeywords = [
       "大きい",
       "巨大",
@@ -1171,8 +1100,7 @@ export class CreatureGenerator {
       "massive",
     ];
     if (bigKeywords.some((k) => message_lower.includes(k))) {
-      aggressiveness = Math.min(1, aggressiveness + 0.2);
-      fleeWhenWeak = Math.max(0, fleeWhenWeak - 0.2); // 大きいと逃げにくい
+      // 大きい場合でも攻撃性や逃走は明示的な指示がない限り変更しない
     }
 
     // 賢い・知的系キーワード
@@ -1189,55 +1117,20 @@ export class CreatureGenerator {
       "genius",
     ];
     if (smartKeywords.some((k) => message_lower.includes(k))) {
-      fleeWhenWeak = Math.min(1, fleeWhenWeak + 0.2); // 賢いと危険を回避
+      // 賢い場合でも逃げる動作は明示的な指示がない限り行わない
       curiosity = Math.min(1, curiosity + 0.2);
     }
 
     // ===== 食性による調整 =====
-    if (behavior.diet === "carnivore") {
-      approachEnemy = Math.min(1, approachEnemy + 0.4); // 肉食は獲物に近づく
-      aggressiveness = Math.min(1, aggressiveness + 0.3);
-      fleeWhenWeak = Math.max(0, fleeWhenWeak - 0.2);
-    } else if (behavior.diet === "herbivore") {
-      approachEnemy = Math.max(-1, approachEnemy - 0.4); // 草食は敵から逃げる
-      aggressiveness = Math.max(0, aggressiveness - 0.2);
-      fleeWhenWeak = Math.min(1, fleeWhenWeak + 0.3);
-    }
+    // ※ 食性による自動調整は削除しました
+    // 明示的なキーワードがない限り、逃げる動作は行わない
 
     // ===== 社会性による調整 =====
-    if (behavior.social === "pack" || behavior.social === "swarm") {
-      approachAlly = Math.min(1, approachAlly + 0.3);
-      territoriality = Math.max(0, territoriality - 0.2);
-    } else if (behavior.social === "solitary") {
-      approachAlly = Math.max(-1, approachAlly - 0.3);
-      territoriality = Math.min(1, territoriality + 0.2);
-    }
+    // ※ 社会性による自動調整は削除しました
 
     // ===== 属性値による微調整 =====
-    if (attributes.strength > 7) {
-      aggressiveness = Math.min(1, aggressiveness + 0.15);
-      fleeWhenWeak = Math.max(0, fleeWhenWeak - 0.1);
-    }
-    if (attributes.strength < 3) {
-      fleeWhenWeak = Math.min(1, fleeWhenWeak + 0.15);
-      aggressiveness = Math.max(0, aggressiveness - 0.1);
-    }
-
-    if (attributes.intelligence > 7) {
-      fleeWhenWeak = Math.min(1, fleeWhenWeak + 0.1);
-      curiosity = Math.min(1, curiosity + 0.15);
-    }
-
-    if (attributes.social > 7) {
-      approachAlly = Math.min(1, approachAlly + 0.15);
-    }
-    if (attributes.social < 3) {
-      approachAlly = Math.max(-1, approachAlly - 0.15);
-    }
-
-    if (attributes.speed > 7) {
-      curiosity = Math.min(1, curiosity + 0.1);
-    }
+    // ※ 属性値によるfleeWhenWeakの自動調整は削除しました
+    // 明示的なキーワードがない限り、逃げる動作は行わない
 
     // -1.0 ~ 1.0 または 0.0 ~ 1.0 に正規化
     // 障害物対応を追加
@@ -1304,12 +1197,9 @@ export class CreatureGenerator {
       flockingBehavior = Math.min(1, flockingBehavior + 0.2);
     }
 
-    // 食欲の計算
-    let foodGreed = 0.5; // デフォルト
-    if (behavior.diet === "herbivore") {
-      foodGreed = Math.min(1, foodGreed + 0.3); // 草食は食欲旺盛
-    }
-    // キーワードチェック
+    // 食欲の計算（デフォルト：植物を追わない）
+    let foodGreed = 0; // デフォルト：植物を追わない
+    // キーワードチェック（明示的に指定された場合のみ植物を追う）
     const foodKeywords = [
       "食べる",
       "腹減",
@@ -1319,9 +1209,15 @@ export class CreatureGenerator {
       "eat",
       "hungry",
       "greedy",
+      "植物",
+      "草",
+      "葉",
+      "plant",
+      "grass",
+      "leaf",
     ];
     if (foodKeywords.some((k) => message_lower.includes(k))) {
-      foodGreed = Math.min(1, foodGreed + 0.3);
+      foodGreed = Math.min(1, foodGreed + 0.7);
     }
 
     // パニック閾値の計算（低いほどパニックになりやすい）
@@ -1490,9 +1386,10 @@ export class CreatureGenerator {
 
     const profile = redProfiles[index % redProfiles.length];
 
+    // レッド族は画面上部中央から登場
     const position = {
-      x: Math.random() * 800,
-      y: Math.random() * 600,
+      x: 400 + (Math.random() - 0.5) * 100, // 中央付近（350-450の範囲）
+      y: 50, // 画面上部
     };
 
     // レッド族の属性（個性に応じて調整）
@@ -1597,33 +1494,16 @@ export class CreatureGenerator {
   }
 
   // グリーン族（逃げる側）を生成する（自動補充用）
+  // initialSpeciesDataのおバカキャラクターを使用
   generateGreenCreature(index: number): Creature {
-    // ティー系列の名前
-    const greenNames = [
-      "アールグレイ",
-      "ダージリン",
-      "アッサム",
-      "セイロン",
-      "ウバ",
-      "カモミール",
-      "ジャスミン",
-      "ルイボス",
-      "マテ",
-      "ほうじ茶",
-      "抹茶",
-      "玉露",
-      "煎茶",
-      "烏龍茶",
-      "プーアル",
-      "ペパーミント",
-      "レモングラス",
-      "ハイビスカス",
-      "ローズヒップ",
-    ];
+    // initialSpeciesDataからランダムに選択
+    const speciesData = initialSpeciesData[index % initialSpeciesData.length];
+    const comment = speciesData.comments[0];
 
+    // グリーン族は画面外下部中央から登場（画面に入ってくる演出）
     const position = {
-      x: 50 + Math.random() * 700, // 画面端を避ける
-      y: 50 + Math.random() * 500,
+      x: 400 + (Math.random() - 0.5) * 100, // 中央付近（350-450の範囲）
+      y: 650, // 画面外下部（ゆっくり画面内に入ってくる）
     };
 
     // グリーン族の属性（小さめ、素早い、知的）
@@ -1660,39 +1540,44 @@ export class CreatureGenerator {
     };
 
     const traits = {
-      strengths: ["逃走能力", "警戒心", "繁殖力"],
-      weaknesses: ["戦闘力が低い", "肉食動物に弱い"],
+      strengths: ["のんびり", "平和的", "マイペース"],
+      weaknesses: ["戦闘力が低い", "判断力が低い"],
     };
 
-    // 草食動物らしい行動プログラム
-    const behaviorProgram = {
-      approachAlly: 0.3, // 仲間に近づく
-      approachEnemy: -0.9, // 敵から逃げる
-      fleeWhenWeak: 0.9, // 弱いと逃げる
-      aggressiveness: 0.1, // 攻撃性は低い
-      curiosity: 0.5, // 適度に動く
-      territoriality: 0.3, // 縄張り意識は低め
-      obstacleAwareness: 0.7, // 障害物をよく認識
-      obstacleStrategy: "use-as-cover" as const, // 隠れ場所として活用
-      stealthAttack: 0.4, // 背後攻撃は中程度
-      counterAttack: 0.1, // 反撃はほぼしない
-      ignoreObstacleBlockedTargets: true, // 賢い（障害物越しの目標を無視）
-      avoidObstacleInterior: true, // 賢い（障害物内部を目標にしない）
-      activeHunterAttack: 0.4, // ハンター攻撃は中程度（システムグリーン）
-      flockingBehavior: 0.6, // 群れで行動
-      foodGreed: 0.7, // 植物を積極的に探す
-      panicThreshold: 0.4, // やや臆病
-      bravery: 0.2, // あまり勇敢ではない
-    };
+    // おバカ用の行動プログラム（initialSpeciesDataのisDumbに従う）
+    const behaviorProgram = speciesData.isDumb
+      ? { ...DUMB_BEHAVIOR_PROGRAM }
+      : {
+          approachAlly: 0.3,
+          approachEnemy: -0.9,
+          fleeWhenWeak: 0.9,
+          aggressiveness: 0.1,
+          curiosity: 0.5,
+          territoriality: 0.3,
+          obstacleAwareness: 0.7,
+          obstacleStrategy: "use-as-cover" as const,
+          stealthAttack: 0.4,
+          counterAttack: 0.1,
+          ignoreObstacleBlockedTargets: true,
+          avoidObstacleInterior: true,
+          activeHunterAttack: 0.4,
+          flockingBehavior: 0.6,
+          foodGreed: 0.7,
+          panicThreshold: 0.4,
+          bravery: 0.2,
+        };
 
     const vision = this.generateVision("グリーン族", attributes.intelligence);
 
     // システム生成のグリーンは固定typeID
     const typeId = `green-system-${index}`;
 
+    // 名前を生成（authorを使用）
+    const name = this.generateName(comment, speciesData.author, attributes);
+
     return {
       id: `green-creature-${Date.now()}-${index}-${performance.now()}`,
-      name: greenNames[index % greenNames.length],
+      name: name,
       typeId: typeId, // システムグリーンの固定typeID
       attributes,
       appearance,
@@ -1708,7 +1593,7 @@ export class CreatureGenerator {
       energy: 100,
       age: 0,
       author: "システム",
-      comment: "自動生成されたグリーン族",
+      comment: comment,
       species: "グリーン族",
       isNewArrival: false,
       reproductionCooldown: 0,

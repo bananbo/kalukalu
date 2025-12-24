@@ -139,6 +139,9 @@ app.post("/api/youtube/start", async (req, res) => {
           { species: speciesDecision.species }
         );
 
+        // YouTubeからの生成フラグを設定
+        creature.isFromYouTube = true;
+
         // 全クライアントに新しい生物を送信
         broadcast({
           type: "newCreature",
@@ -273,11 +276,14 @@ app.get("/api/initial-species", async (req, res) => {
     // グリーン族を生成
     for (const species of initialSpeciesData) {
       for (const comment of species.comments) {
-        const creature = await creatureGenerator.generateFromComment({
-          author: species.author,
-          message: comment,
-          timestamp: new Date(),
-        });
+        const creature = await creatureGenerator.generateFromComment(
+          {
+            author: species.author,
+            message: comment,
+            timestamp: new Date(),
+          },
+          { isDumb: species.isDumb } // おバカフラグを渡す
+        );
         // 初期種族は外来種フラグをfalseに
         creature.isNewArrival = false;
         creatures.push(creature);

@@ -174,22 +174,26 @@ function App() {
             <span className="timer-value">{formatTime(remainingTime)}</span>
           </div>
           <button
-            className="header-add-btn"
+            className={`header-btn header-add-btn ${
+              isAIPopupOpen ? "active" : ""
+            }`}
             onClick={() => setIsAIPopupOpen(!isAIPopupOpen)}
             title="キャラクター追加"
           >
             <span className="icon icon-pen"></span>
-            <span>ADD</span>
+            <span className="btn-label">ADD</span>
           </button>
           <YouTubeControl />
           <SoundControl />
           <div
-            className={`connection-status ${
+            className={`header-status ${
               isConnected ? "connected" : "disconnected"
             }`}
           >
             <span className="icon icon-wifi"></span>
-            {isConnected ? "接続中" : "未接続"}
+            <span className="status-label">
+              {isConnected ? "接続中" : "未接続"}
+            </span>
           </div>
         </div>
       </header>

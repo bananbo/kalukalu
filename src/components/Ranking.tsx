@@ -89,7 +89,7 @@ export default function Ranking({ creatures }: RankingProps) {
     return type === "green" && !isSystem;
   });
 
-  // typeIDごとに集計
+  // typeIDごとに集計（現在のスコア）
   const typeScores = new Map<string, TypeScore>();
   greenCreatures.forEach((c) => {
     if (!typeScores.has(c.typeId)) {
@@ -107,7 +107,9 @@ export default function Ranking({ creatures }: RankingProps) {
     score.count++;
   });
 
-  const currentScores = Array.from(typeScores.values());
+  const currentScores = Array.from(typeScores.values()).sort(
+    (a, b) => b.points - a.points
+  );
 
   // ポイント変動を検知して保存
   useEffect(() => {
@@ -196,7 +198,7 @@ export default function Ranking({ creatures }: RankingProps) {
     <div className="ranking-panel">
       <div className="ranking-header">
         <h2>
-          <span className="icon icon-trophy icon-lg"></span> ランキング
+          <span className="icon icon-trophy icon-lg"></span> スコアボード
         </h2>
         <button
           className="reset-ranking-btn"
@@ -209,8 +211,14 @@ export default function Ranking({ creatures }: RankingProps) {
 
       {/* リセット確認モーダル */}
       {showResetConfirm && (
-        <div className="reset-confirm-overlay" onClick={() => setShowResetConfirm(false)}>
-          <div className="reset-confirm-modal" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="reset-confirm-overlay"
+          onClick={() => setShowResetConfirm(false)}
+        >
+          <div
+            className="reset-confirm-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="reset-confirm-header">
               <span className="icon icon-alert"></span>
               <h3>ランキングリセット</h3>
@@ -226,10 +234,7 @@ export default function Ranking({ creatures }: RankingProps) {
               >
                 キャンセル
               </button>
-              <button
-                className="btn-confirm"
-                onClick={handleResetRanking}
-              >
+              <button className="btn-confirm" onClick={handleResetRanking}>
                 リセット
               </button>
             </div>
@@ -237,61 +242,74 @@ export default function Ranking({ creatures }: RankingProps) {
         </div>
       )}
 
-      {/* 累計1位・今日1位 */}
-      <div className="top-players">
-        {allTimeFirst && allTimeFirst.points > 0 && (
-          <div className="top-player alltime">
-            <span className="label">
-              <span className="icon icon-crown"></span> 累計1位
-            </span>
-            <span className="name">{allTimeFirst.name}</span>
-            <span className="pts">{allTimeFirst.points}pt</span>
+      {/* 左右分割レイアウト */}
+      <div className="score-layout">
+        {/* 左側: 現在のスコア */}
+        <div className="current-scores-section">
+          <div className="section-header">
+            <span className="icon icon-leaf"></span> 現在のスコア
           </div>
-        )}
-        {todayFirst && todayFirst.points > 0 && (
-          <div className="top-player today">
-            <span className="label">
-              <span className="icon icon-star"></span> 今日1位
-            </span>
-            <span className="name">{todayFirst.name}</span>
-            <span className="pts">{todayFirst.points}pt</span>
-          </div>
-        )}
-      </div>
-
-      <div className="ranking-list">
-        {combinedRanking.length === 0 ? (
-          <div className="no-data">まだデータがありません</div>
-        ) : (
-          combinedRanking.slice(0, 10).map((score, index) => (
-            <div
-              key={score.typeId}
-              className={`ranking-item ${index === 0 ? "first-place" : ""} ${
-                !score.isAlive ? "inactive" : ""
-              }`}
-            >
-              <div className="rank">{index + 1}位</div>
-              <div className="author-info">
-                <div className="creature-name">
-                  {score.name}
-                  {score.count > 0 && (
-                    <span className="count-badge">×{score.count}</span>
-                  )}
+          <div className="current-scores-list">
+            {currentScores.length === 0 ? (
+              <div className="no-data">参加者なし</div>
+            ) : (
+              currentScores.slice(0, 8).map((score, index) => (
+                <div
+                  key={score.typeId}
+                  className={`current-score-item ${
+                    index === 0 ? "top-score" : ""
+                  }`}
+                >
+                  <div className="score-rank">{index + 1}</div>
+                  <div className="score-info">
+                    <span className="score-name">
+                      {score.name.length > 5
+                        ? score.name.substring(0, 5) + "…"
+                        : score.name}
+                    </span>
+                    {score.count > 1 && (
+                      <span className="score-count">×{score.count}</span>
+                    )}
+                  </div>
+                  <div className="score-points">{score.points}pt</div>
                 </div>
-                <div className="creature-author">by {score.author}</div>
-              </div>
-              <div className="points-info">
-                <div className="points">{score.allTimePoints}pt</div>
-                {score.todayPoints > 0 && (
-                  <div className="today-pts">今日 +{score.todayPoints}</div>
-                )}
-                {score.isAlive && score.currentPoints > 0 && (
-                  <div className="current-pts">現在 {score.currentPoints}</div>
-                )}
-              </div>
-            </div>
-          ))
-        )}
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* 右側: 累計ランキング */}
+        <div className="ranking-section">
+          <div className="section-header">
+            <span className="icon icon-crown"></span> 累計ランキング
+          </div>
+          <div className="ranking-list">
+            {combinedRanking.length === 0 ? (
+              <div className="no-data">データなし</div>
+            ) : (
+              combinedRanking.slice(0, 8).map((score, index) => (
+                <div
+                  key={score.typeId}
+                  className={`ranking-item ${
+                    index === 0 ? "first-place" : ""
+                  } ${!score.isAlive ? "inactive" : ""}`}
+                >
+                  <div className="rank">{index + 1}</div>
+                  <div className="author-info">
+                    <div className="creature-name">
+                      {score.name.length > 5
+                        ? score.name.substring(0, 5) + "…"
+                        : score.name}
+                    </div>
+                  </div>
+                  <div className="points-info">
+                    <div className="points">{score.allTimePoints}pt</div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

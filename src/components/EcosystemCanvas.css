@@ -2,7 +2,12 @@
   width: 100%;
   height: 100%;
   position: relative;
-  background: linear-gradient(135deg, #fffbeb 0%, #fef9c3 50%, #fef3c7 100%); /* より明るいクリーム色 */
+  background: linear-gradient(
+    135deg,
+    #fffbeb 0%,
+    #fef9c3 50%,
+    #fef3c7 100%
+  ); /* より明るいクリーム色 */
   overflow: hidden;
 }
 
@@ -350,17 +355,16 @@
   position: absolute;
   top: 0.5rem;
   left: 0.5rem;
-  background: rgba(255, 255, 255, 0.95); /* より明るい白背景 */
-  backdrop-filter: blur(8px);
-  border: 3px solid #f97316; /* より濃いオレンジボーダー */
-  border-radius: 16px; /* さらに丸く */
+  background: rgba(255, 255, 255, 0.3); /* 半透明に変更 */
+  border: 2px solid rgba(249, 115, 22, 0.6); /* ボーダーも半透明 */
+  border-radius: 16px;
   padding: 0.6rem 1.2rem;
   display: flex;
   gap: 1rem;
   font-size: 0.9rem;
-  color: #111827; /* より暗いテキスト */
-  font-weight: 600; /* 太字 */
-  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.5);
+  color: #111827;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
 }
 
 .compact-status span {
@@ -534,22 +538,36 @@
   }
 }
 
+/* セーフゾーン */
+.safe-zone {
+  animation: safeZonePulse 3s ease-in-out infinite;
+}
+
+@keyframes safeZonePulse {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
 /* グリーンスコアボード（右下オーバーレイ） */
 .green-scoreboard {
   position: absolute;
   bottom: 10px;
   right: 10px;
-  background: rgba(255, 255, 255, 0.95); /* より明るい白背景 */
-  border-radius: 16px; /* さらに丸く */
+  background: rgba(255, 255, 255, 0.3); /* 半透明に変更 */
+  border-radius: 16px;
   padding: 12px 16px;
   min-width: 150px;
   max-width: 200px;
   max-height: 200px;
   overflow-y: auto;
-  backdrop-filter: blur(8px);
-  border: 3px solid #16a34a; /* より濃い緑ボーダー */
+  border: 2px solid rgba(22, 163, 74, 0.6); /* ボーダーも半透明 */
   pointer-events: none;
-  box-shadow: 0 4px 12px rgba(22, 163, 74, 0.5);
+  box-shadow: 0 4px 12px rgba(22, 163, 74, 0.3);
 }
 
 .scoreboard-header {

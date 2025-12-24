@@ -40,6 +40,10 @@ export interface Obstacle {
   width: number;
   height: number;
   type: "wall" | "rock" | "tree"; // 後でイラストに置き換え可能
+  // 移動する障害物用のプロパティ
+  moveDirection?: number; // 移動方向 (1: 右, -1: 左)
+  moveSpeed?: number; // 移動速度
+  originalX?: number; // 元のX位置（移動範囲の基準）
 }
 
 // 種族タイプを判定するヘルパー
@@ -386,6 +390,7 @@ export interface Creature {
   comment: string;
   species: string; // 'レッド族' または 'グリーン族'
   isNewArrival?: boolean;
+  isFromYouTube?: boolean; // YouTube コメントからの生成か
   reproductionCooldown: number;
   reproductionHistory: { [partnerId: string]: number }; // 相手ごとの繁殖回数
   wanderAngle: number; // 現在の移動方向（ラジアン）
