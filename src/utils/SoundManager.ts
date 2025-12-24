@@ -26,10 +26,14 @@ class SoundManager {
     this.enabled = true;
     this.volume = 0.5;
     this.bgm = null;
-    this.bgmEnabled = false;
+    this.bgmEnabled = true;
     this.bgmVolume = 0.3;
     this.loadSounds();
     this.loadBGM();
+    // BGMをデフォルトで開始
+    if (this.bgmEnabled && this.bgm) {
+      this.playBGM();
+    }
   }
 
   static getInstance(): SoundManager {

@@ -407,4 +407,8 @@ export interface Creature {
   // 攻撃者追跡（グリーン用）
   trackedAttackerPos?: { x: number; y: number }; // 攻撃者の最後の位置
   trackingUntil?: number; // 追跡が有効なフレーム
+  // 生成時刻と無敵期間
+  createdAt?: number; // 生成された時刻（ミリ秒）
+  isInvulnerable?: boolean; // 無敵状態（新規生成後の保護期間）
+  invulnerableUntil?: number; // 無敵状態の終了時刻（ミリ秒）
 }

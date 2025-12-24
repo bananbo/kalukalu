@@ -59,6 +59,56 @@
   width: 6px;
 }
 
+/* モバイル対応 */
+@media (max-width: 768px) {
+  .ai-generator-control {
+    top: auto;
+    bottom: 0;
+    right: 0;
+    left: 0;
+    z-index: 10001;
+  }
+
+  .ai-popup-panel {
+    width: 100%;
+    max-height: 70vh;
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.5);
+  }
+
+  .ai-popup-header {
+    padding: 0.75rem 1rem;
+  }
+
+  .ai-popup-header h3 {
+    font-size: 0.9rem;
+  }
+
+  .ai-popup-content {
+    padding: 1rem;
+    max-height: calc(70vh - 60px);
+  }
+}
+
+@media (max-width: 480px) {
+  .ai-popup-panel {
+    max-height: 75vh;
+  }
+
+  .ai-popup-header {
+    padding: 0.6rem 0.75rem;
+  }
+
+  .ai-popup-header h3 {
+    font-size: 0.85rem;
+  }
+
+  .ai-popup-content {
+    padding: 0.75rem;
+    max-height: calc(75vh - 50px);
+  }
+}
+
 .ai-popup-content::-webkit-scrollbar-track {
   background: rgba(15, 23, 42, 0.4);
   border-radius: 3px;

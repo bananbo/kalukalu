@@ -218,11 +218,11 @@ app.post("/api/youtube/start-auto", async (req, res) => {
       // メッセージを30文字に制限
       const truncatedMessage = comment.message.slice(0, 30);
 
-      // 種族を決定（レッド族は3体未満の時のみ生成可能）
+      // 種族を決定（レッド族は2体未満の時のみ生成可能）
       const speciesDecision = creatureGenerator.determineSpecies(
         truncatedMessage,
         currentCreatureCounts.red,
-        3 // レッド族の上限
+        2 // レッド族の上限
       );
       console.log("Species decision:", speciesDecision);
 
@@ -284,8 +284,8 @@ app.get("/api/initial-species", async (req, res) => {
       }
     }
 
-    // レッド族（鬼）を自動生成（初期3体）
-    const INITIAL_RED_COUNT = 3;
+    // レッド族（鬼）を自動生成（初期2体）
+    const INITIAL_RED_COUNT = 2;
     for (let i = 0; i < INITIAL_RED_COUNT; i++) {
       const redCreature = creatureGenerator.generateRedCreature(i);
       creatures.push(redCreature);

@@ -469,8 +469,8 @@ const EcosystemCanvas = ({
           let newVelocityY =
             creature.velocity.y * 0.9 + intelligentForce.y * 0.2;
 
-          // 最大速度制限（さらに遅く）
-          const maxSpeed = creature.attributes.speed * 0.15;
+          // 最大速度制限（0.5倍に減速）
+          const maxSpeed = creature.attributes.speed * 0.075;
           const currentSpeed = Math.sqrt(newVelocityX ** 2 + newVelocityY ** 2);
           if (currentSpeed > maxSpeed) {
             newVelocityX = (newVelocityX / currentSpeed) * maxSpeed;
@@ -974,7 +974,7 @@ const EcosystemCanvas = ({
       }
 
       // 自動補充システム（一定数を下回ったら追加）
-      const MIN_RED_COUNT = 3; // レッド族の最小数を3体に変更
+      const MIN_RED_COUNT = 2; // レッド族の最小数を3体に変更
       const MIN_GREEN_COUNT = 3;
 
       const redCount = updatedCreatures.filter(
@@ -1352,6 +1352,12 @@ const EcosystemCanvas = ({
         {/* レッドの巣を描画 */}
         {renderRedNest()}
       </svg>
+
+      {/* キャラクター追加位置マーク（画面下部中央） */}
+      <div className="spawn-marker">
+        <div className="spawn-arrow">↑</div>
+        <div className="spawn-label">キャラ追加位置</div>
+      </div>
 
       {/* グリーンスコアボード（右下オーバーレイ） */}
       <div className="green-scoreboard">

@@ -7,11 +7,11 @@ export const GameConfig = {
   // === 生物の基本設定 ===
   creatures: {
     // 初期生成数
-    initialRedCount: 3,
+    initialRedCount: 2, // 3体 → 2体に削減
     initialGreenCount: 9, // 初期種族データの数に合わせる
 
     // レッド族の上限
-    maxRedCreatures: 3,
+    maxRedCreatures: 2, // 3体 → 2体に削減
 
     // エネルギー関連
     initialEnergy: 100,
@@ -23,7 +23,7 @@ export const GameConfig = {
     plantPointsForSplit: 10, // 分裂に必要なポイント
 
     // 生存ポイント関連
-    survivalPointsInterval: 600, // 10秒 (60fps * 10)
+    survivalPointsInterval: 300, // 10秒 (30fps * 10)
 
     // 視野設定
     vision: {
@@ -49,7 +49,7 @@ export const GameConfig = {
 
   // === 障害物の設定 ===
   obstacles: {
-    count: 8, // 障害物の数
+    count: 4, // 障害物の数（8 → 4に削減）
     minSize: 30, // 最小サイズ
     maxSize: 80, // 最大サイズ
   },
@@ -66,16 +66,19 @@ export const GameConfig = {
     // 攻撃関連
     attackDamage: 20, // 通常攻撃のダメージ
     backstabMultiplier: 1.5, // 背後攻撃の倍率
-    attackCooldown: 60, // 攻撃のクールダウン（フレーム数）
+    attackCooldown: 30, // 攻撃のクールダウン（フレーム数、30fps基準）
 
     // 反撃・撤退関連
-    vulnerableDuration: 180, // 無防備状態の持続時間（フレーム数、3秒）
+    vulnerableDuration: 90, // 無防備状態の持続時間（フレーム数、3秒、30fps基準）
     retreatEnergyThreshold: 30, // 撤退を開始するエネルギー閾値
+
+    // 新規生成キャラクターの保護
+    invulnerabilityDuration: 30000, // 無敵期間（ミリ秒、30秒）
   },
 
   // === シミュレーション設定 ===
   simulation: {
-    fps: 60, // フレームレート
+    fps: 30, // フレームレート（30fps固定）
     canvasWidth: 800, // キャンバス幅
     canvasHeight: 600, // キャンバス高さ
 

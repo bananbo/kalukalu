@@ -381,3 +381,112 @@
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
 }
+
+/* モバイル対応 */
+@media (max-width: 768px) {
+  .ranking-panel {
+    margin: 0;
+    padding: 0.75rem;
+  }
+
+  .ranking-header h2 {
+    font-size: 0.9rem;
+  }
+
+  .reset-ranking-btn {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .top-players {
+    gap: 0.5rem;
+  }
+
+  .top-player {
+    padding: 0.5rem;
+  }
+
+  .top-player .label {
+    font-size: 0.65rem;
+  }
+
+  .top-player .name {
+    font-size: 0.8rem;
+  }
+
+  .top-player .pts {
+    font-size: 0.75rem;
+  }
+
+  .ranking-item {
+    padding: 0.6rem;
+  }
+
+  .rank {
+    font-size: 0.75rem;
+    min-width: 2.5rem;
+  }
+
+  .creature-name {
+    font-size: 0.8rem;
+  }
+
+  .creature-author {
+    font-size: 0.65rem;
+  }
+
+  .points {
+    font-size: 0.85rem;
+  }
+
+  .today-pts,
+  .current-pts {
+    font-size: 0.65rem;
+  }
+
+  /* モーダルのサイズ調整 */
+  .reset-confirm-modal {
+    width: 90%;
+    max-width: 350px;
+    padding: 1rem;
+  }
+
+  .reset-confirm-header h3 {
+    font-size: 1rem;
+  }
+
+  .reset-confirm-content p {
+    font-size: 0.85rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .ranking-panel {
+    padding: 0.5rem;
+  }
+
+  .ranking-header h2 {
+    font-size: 0.85rem;
+  }
+
+  .top-player {
+    padding: 0.4rem;
+  }
+
+  .ranking-item {
+    padding: 0.5rem;
+  }
+
+  .rank {
+    font-size: 0.7rem;
+    min-width: 2.25rem;
+  }
+
+  .creature-name {
+    font-size: 0.75rem;
+  }
+
+  .points {
+    font-size: 0.8rem;
+  }
+}

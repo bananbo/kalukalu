@@ -125,6 +125,10 @@ interface Creature {
   lastAttackedBy: string | null; // 最後に攻撃してきた相手のID
   lastAttackedAt: number; // 最後に攻撃された時刻（フレーム数）
   isCounterAttacking: boolean; // 反撃中（回避せず立ち向かっている）
+  // 生成時刻と無敵期間
+  createdAt?: number; // 生成された時刻（ミリ秒）
+  isInvulnerable?: boolean; // 無敵状態（新規生成後の保護期間）
+  invulnerableUntil?: number; // 無敵状態の終了時刻（ミリ秒）
 }
 
 export class CreatureGenerator {
@@ -447,9 +451,10 @@ export class CreatureGenerator {
     // パラメータの合計を調整（バランス調整）- 全属性MAXを防ぐ
     const balancedAttributes = this.balanceAttributes(aiParams.attributes);
 
+    // キャラクターを画面下部から追加（矢印マーク位置付近）
     const position = {
-      x: Math.random() * 800,
-      y: Math.random() * 600,
+      x: 400 + (Math.random() - 0.5) * 200, // 中央付近（300-500の範囲）
+      y: 550, // 画面下部
     };
 
     const velocity = {
@@ -504,6 +509,10 @@ export class CreatureGenerator {
       lastAttackedBy: null, // 最後に攻撃してきた相手
       lastAttackedAt: 0, // 最後に攻撃された時刻
       isCounterAttacking: false, // 反撃中ではない
+      // 生成時刻と無敵期間（30秒間）
+      createdAt: Date.now(),
+      isInvulnerable: true,
+      invulnerableUntil: Date.now() + 30000, // 30秒間無敵
     };
   }
 
@@ -590,10 +599,10 @@ export class CreatureGenerator {
           : "solitary",
     };
 
-    // ランダムな初期位置
+    // キャラクターを画面下部から追加（矢印マーク位置付近）
     const position = {
-      x: Math.random() * 800,
-      y: Math.random() * 600,
+      x: 400 + (Math.random() - 0.5) * 200, // 中央付近（300-500の範囲）
+      y: 550, // 画面下部
     };
 
     const velocity = {
@@ -668,6 +677,10 @@ export class CreatureGenerator {
       lastAttackedBy: null, // 最後に攻撃してきた相手
       lastAttackedAt: 0, // 最後に攻撃された時刻
       isCounterAttacking: false, // 反撃中ではない
+      // 生成時刻と無敵期間（30秒間）
+      createdAt: Date.now(),
+      isInvulnerable: true,
+      invulnerableUntil: Date.now() + 30000, // 30秒間無敵
     };
   }
 
@@ -1576,6 +1589,10 @@ export class CreatureGenerator {
       lastAttackedBy: null, // 最後に攻撃してきた相手
       lastAttackedAt: 0, // 最後に攻撃された時刻
       isCounterAttacking: false, // 反撃中ではない
+      // 生成時刻と無敵期間（30秒間）
+      createdAt: Date.now(),
+      isInvulnerable: true,
+      invulnerableUntil: Date.now() + 30000, // 30秒間無敵
     };
   }
 
@@ -1709,6 +1726,10 @@ export class CreatureGenerator {
       lastAttackedBy: null, // 最後に攻撃してきた相手
       lastAttackedAt: 0, // 最後に攻撃された時刻
       isCounterAttacking: false, // 反撃中ではない
+      // 生成時刻と無敵期間（30秒間）
+      createdAt: Date.now(),
+      isInvulnerable: true,
+      invulnerableUntil: Date.now() + 30000, // 30秒間無敵
     };
   }
 

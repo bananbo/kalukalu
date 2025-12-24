@@ -203,10 +203,12 @@ function App() {
         </div>
 
         <aside className="sidebar">
-          <CreatureStats creatures={creatures} />
           <Ranking creatures={creatures} />
         </aside>
       </div>
+
+      {/* キャラクター通知（画面下から表示） */}
+      <CreatureStats creatures={creatures} />
 
       {/* AI生成ポップアップ */}
       <AIGeneratorPopup
